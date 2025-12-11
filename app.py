@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from backend import PadelDB
 from datetime import datetime, timedelta
+import pytz # <--- IMPORTANTE: Librería para zonas horarias
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Liga Padel", layout="wide")
@@ -114,7 +115,6 @@ def main_app():
     mis_slots_guardados = st.session_state.mis_slots_cache
     nuevos_slots_usuario = []
     
-    # === HEADER ===
     c_titulo, c_vacio, c_boton = st.columns([3, 4, 1], vertical_alignment="center") 
     c_titulo.markdown(f"### HOLA, {st.session_state.user['nombre']}")
     if c_boton.button("SALIR", key="logout", use_container_width=True):
@@ -123,17 +123,16 @@ def main_app():
 
     st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #eee;'/>", unsafe_allow_html=True)
     
-    # === CÁLCULO DE FECHAS (LÓGICA SEMANAL) ===
-    hoy = datetime.now()
+    # === FECHAS CON ZONA HORARIA ESPAÑOLA ===
+    zona_madrid = pytz.timezone('Europe/Madrid')
+    hoy = datetime.now(zona_madrid) # <--- AQUI ESTA EL CAMBIO CLAVE
     
-    # Calcular el Lunes de esta semana (empezamos a contar desde ahí)
     lunes_esta_semana = hoy - timedelta(days=hoy.weekday())
     
     meses = {1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL", 5: "MAYO", 6: "JUNIO", 
              7: "JULIO", 8: "AGOSTO", 9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"}
     nombre_mes = meses[hoy.month]
 
-    # Semanas fijas de Lunes a Domingo
     inicio_s1 = lunes_esta_semana
     fin_s1 = inicio_s1 + timedelta(days=6)
     inicio_s2 = inicio_s1 + timedelta(days=7)
@@ -150,19 +149,16 @@ def main_app():
         
         col_sem1, col_sem2 = st.columns(2, gap="medium")
         
-        # Iteramos 14 días empezando desde el Lunes de esta semana
         for i in range(14):
             fecha = lunes_esta_semana + timedelta(days=i)
             fecha_str = fecha.strftime('%Y-%m-%d')
             
-            # Comprobar si el día ya pasó (para bloquearlo)
-            # Comparamos solo la fecha (sin hora)
+            # Comparación de fechas segura
             es_pasado = fecha.date() < hoy.date()
             
             contenedor = col_sem1 if i < 7 else col_sem2
             
             with contenedor:
-                # Headers de semana
                 if i == 0:
                     st.markdown(f"<div class='week-header'>SEMANA DEL {inicio_s1.day} AL {fin_s1.day}</div>", unsafe_allow_html=True)
                 elif i == 7:
@@ -176,9 +172,7 @@ def main_app():
                     horas_guardadas_hoy = [h for h in mis_slots_guardados if h.startswith(fecha_str)]
                     activo_por_defecto = bool(horas_guardadas_hoy)
 
-                    # Si es pasado, forzamos desactivado visualmente
                     if es_pasado:
-                        # Color grisáceo para indicar que pasó
                         st.markdown(f"<span style='color: #bbb;'>**{dia_nombre} {dia_num}**</span>", unsafe_allow_html=True)
                         st.toggle("Disp", value=False, key=f"tog_{i}", label_visibility="collapsed", disabled=True)
                         st.caption("⛔ Día pasado")
