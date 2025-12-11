@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "▶️ Iniciar Web App",
+            "type": "python",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "app.py",
+                "--server.port",
+                "8503"
+            ],
+            "justMyCode": true
+        }
+    ]
+}
