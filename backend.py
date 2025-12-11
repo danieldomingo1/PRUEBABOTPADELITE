@@ -2,14 +2,30 @@ import gspread
 import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import streamlit as st # <--- Nuevo import necesario
 
 class PadelDB:
     def __init__(self):
+        # Conexión a Google Sheets
         scope = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        
+        # --- LÓGICA INTELIGENTE (NUBE vs PC) ---
+        # Verificamos si existen secretos configurados (es decir, estamos en la nube)
+        if "gcp_service_account" in st.secrets:
+            # Estamos en Streamlit Cloud: Usamos los datos secretos
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        else:
+            # Estamos en tu PC: Usamos el archivo local
+            try:
+                creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+            except:
+                st.error("❌ No se encuentra el archivo 'credentials.json' ni la configuración de Secrets.")
+                st.stop()
+            
         client = gspread.authorize(creds)
         
-        # --- TU ID REAL ---
+        # TU ID REAL DE LA HOJA
         self.spreadsheet_id = '13Sib273ZatH4fuSAUU6b8YrDdmYHhmS_ZkRnjYeE6RI'
         self.sheet = client.open_by_key(self.spreadsheet_id)
 
@@ -18,19 +34,29 @@ class PadelDB:
             ws = self.sheet.worksheet("USUARIOS")
             data = ws.get_all_records()
             df = pd.DataFrame(data)
-            user_row = df[(df['ID_USUARIO'].astype(str) == str(usuario)) & (df['PASSWORD'].astype(str) == str(password))]
+            
+            user_row = df[
+                (df['ID_USUARIO'].astype(str) == str(usuario)) & 
+                (df['PASSWORD'].astype(str) == str(password))
+            ]
+            
             if not user_row.empty:
                 ws_asig = self.sheet.worksheet("ASIGNACIONES")
                 df_asig = pd.DataFrame(ws_asig.get_all_records())
                 nivel_row = df_asig[df_asig['ID_USUARIO'].astype(str) == str(usuario)]
+                
                 nivel = "NIVEL_TEST" 
-                if not nivel_row.empty: nivel = nivel_row.iloc[0]['NIVEL']
+                if not nivel_row.empty:
+                    nivel = nivel_row.iloc[0]['NIVEL']
+                    
                 return user_row.iloc[0]['NOMBRE_REAL'], nivel
             return None, None
-        except: return None, None
+            
+        except Exception as e:
+            print(f"Error en login: {e}")
+            return None, None
 
     def get_mis_horas(self, id_usuario):
-        """Devuelve slots guardados"""
         ws = self.sheet.worksheet("DISPONIBILIDAD")
         data = ws.get_all_records()
         mis_slots = []
@@ -40,12 +66,13 @@ class PadelDB:
         return mis_slots
 
     def guardar_disponibilidad(self, id_usuario, fechas_horas):
-        """Sobrescribe disponibilidad"""
         ws = self.sheet.worksheet("DISPONIBILIDAD")
         all_data = ws.get_all_records()
-        # Filtramos para quitar lo viejo de este usuario
-        new_data_rows = [ [row['ID_USUARIO'], row['FECHA'], row['HORA_INICIO'], row['HORA_FIN']] 
-                          for row in all_data if str(row['ID_USUARIO']) != str(id_usuario) ]
+        
+        new_data_rows = []
+        for row in all_data:
+            if str(row['ID_USUARIO']) != str(id_usuario):
+                new_data_rows.append([row['ID_USUARIO'], row['FECHA'], row['HORA_INICIO'], row['HORA_FIN']])
         
         for fh in fechas_horas:
             parts = fh.split(" ")
@@ -53,20 +80,22 @@ class PadelDB:
             
         ws.clear()
         ws.append_row(["ID_USUARIO", "FECHA", "HORA_INICIO", "HORA_FIN"])
-        if new_data_rows: ws.append_rows(new_data_rows)
+        if new_data_rows:
+            ws.append_rows(new_data_rows)
 
     def get_matriz_disponibilidad(self, nivel):
         ws_asig = self.sheet.worksheet("ASIGNACIONES")
         users_nivel = [str(row['ID_USUARIO']) for row in ws_asig.get_all_records() if row['NIVEL'] == nivel]
+        
         ws_disp = self.sheet.worksheet("DISPONIBILIDAD")
         data_disp = ws_disp.get_all_records()
         
-        # Ordenar columnas cronológicamente
         horarios_unicos = sorted(list(set([f"{d['FECHA']} {d['HORA_INICIO']}" for d in data_disp])))
-        
         matriz = pd.DataFrame(index=users_nivel, columns=horarios_unicos).fillna("")
+        
         for row in data_disp:
-            uid, time_slot = str(row['ID_USUARIO']), f"{row['FECHA']} {row['HORA_INICIO']}"
+            uid = str(row['ID_USUARIO'])
+            time_slot = f"{row['FECHA']} {row['HORA_INICIO']}"
             if uid in users_nivel and time_slot in horarios_unicos:
                 matriz.at[uid, time_slot] = "✅"
         return matriz
@@ -79,24 +108,18 @@ class PadelDB:
         ws_disp = self.sheet.worksheet("DISPONIBILIDAD")
         all_disp = ws_disp.get_all_records()
         
-        # Set de búsqueda optimizado
         disp_set = set([(str(d['ID_USUARIO']), f"{d['FECHA']} {d['HORA_INICIO']}") for d in all_disp])
         all_slots = sorted(list(set([f"{d['FECHA']} {d['HORA_INICIO']}" for d in all_disp])))
 
         for p in partidos:
-            jugadores = [j.strip() for j in str(p['JUGADORES_IDS']).split(",") if j.strip()]
+            jugadores_raw = str(p['JUGADORES_IDS']).split(",")
+            jugadores = [j.strip() for j in jugadores_raw]
             if len(jugadores) < 4: continue
             
             coincidencias = []
             for slot in all_slots:
                 if all( (j, slot) in disp_set for j in jugadores ):
-                    # Formatear fecha para que se vea bonito en la tarjeta
-                    try:
-                        dt = datetime.strptime(slot, "%Y-%m-%d %H:%M")
-                        slot_bonito = dt.strftime("%a %d %H:%M").replace("Mon","Lun").replace("Tue","Mar").replace("Wed","Mié").replace("Thu","Jue").replace("Fri","Vie")
-                        coincidencias.append(slot_bonito)
-                    except:
-                        coincidencias.append(slot)
+                    coincidencias.append(slot)
             
             if coincidencias:
                 matches.append({
