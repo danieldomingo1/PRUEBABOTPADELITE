@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from backend import PadelDB
 from datetime import datetime, timedelta
-import pytz # <--- IMPORTANTE: Librería para zonas horarias
+import pytz
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Liga Padel", layout="wide")
@@ -64,6 +64,13 @@ OPCIONES_HORAS = [
     "21:00", "21:30", "22:00", "22:30", "23:00"
 ]
 
+# --- FUNCIÓN NUEVA: EL POPUP DE CONFIRMACIÓN ---
+@st.dialog("✅ ¡Confirmado!")
+def popup_guardado(nombre):
+    st.write(f"Perfecto, muchas gracias por marcar tu disponibilidad, **{nombre}**.")
+    if st.button("Cerrar", type="primary"):
+        st.rerun()
+
 def generar_slots_desde_seleccion(fecha_str, hora_inicio_str, hora_fin_str):
     slots = []
     try:
@@ -123,10 +130,8 @@ def main_app():
 
     st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #eee;'/>", unsafe_allow_html=True)
     
-    # === FECHAS CON ZONA HORARIA ESPAÑOLA ===
     zona_madrid = pytz.timezone('Europe/Madrid')
-    hoy = datetime.now(zona_madrid) # <--- AQUI ESTA EL CAMBIO CLAVE
-    
+    hoy = datetime.now(zona_madrid)
     lunes_esta_semana = hoy - timedelta(days=hoy.weekday())
     
     meses = {1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL", 5: "MAYO", 6: "JUNIO", 
@@ -152,8 +157,6 @@ def main_app():
         for i in range(14):
             fecha = lunes_esta_semana + timedelta(days=i)
             fecha_str = fecha.strftime('%Y-%m-%d')
-            
-            # Comparación de fechas segura
             es_pasado = fecha.date() < hoy.date()
             
             contenedor = col_sem1 if i < 7 else col_sem2
@@ -206,13 +209,16 @@ def main_app():
     with zona_panel:
         st.markdown("<div style='margin-top: 60px;'></div>", unsafe_allow_html=True)
         
+        # AQUÍ ES DONDE LANZAMOS EL POPUP AL GUARDAR
         if st.button("💾 GUARDAR DISPONIBILIDAD", type="primary", use_container_width=True):
             try:
                 st.session_state.db.guardar_disponibilidad(st.session_state.user['id'], nuevos_slots_usuario)
                 st.session_state.mis_slots_cache = nuevos_slots_usuario
                 st.session_state.needs_match_refresh = True
-                st.toast("Horario guardado correctamente", icon="✅")
-                st.rerun()
+                
+                # LLAMADA AL POPUP
+                popup_guardado(st.session_state.user['nombre'])
+                
             except Exception as e:
                 st.error("Error guardando. Espera unos segundos.")
 
