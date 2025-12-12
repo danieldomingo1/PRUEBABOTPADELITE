@@ -2,21 +2,16 @@ import gspread
 import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-import streamlit as st # <--- Nuevo import necesario
+import streamlit as st
 
 class PadelDB:
     def __init__(self):
-        # Conexión a Google Sheets
         scope = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
         
-        # --- LÓGICA INTELIGENTE (NUBE vs PC) ---
-        # Verificamos si existen secretos configurados (es decir, estamos en la nube)
         if "gcp_service_account" in st.secrets:
-            # Estamos en Streamlit Cloud: Usamos los datos secretos
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         else:
-            # Estamos en tu PC: Usamos el archivo local
             try:
                 creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
             except:
@@ -24,8 +19,6 @@ class PadelDB:
                 st.stop()
             
         client = gspread.authorize(creds)
-        
-        # TU ID REAL DE LA HOJA
         self.spreadsheet_id = '13Sib273ZatH4fuSAUU6b8YrDdmYHhmS_ZkRnjYeE6RI'
         self.sheet = client.open_by_key(self.spreadsheet_id)
 
@@ -41,19 +34,31 @@ class PadelDB:
             ]
             
             if not user_row.empty:
-                ws_asig = self.sheet.worksheet("ASIGNACIONES")
-                df_asig = pd.DataFrame(ws_asig.get_all_records())
-                nivel_row = df_asig[df_asig['ID_USUARIO'].astype(str) == str(usuario)]
-                
-                nivel = "NIVEL_TEST" 
-                if not nivel_row.empty:
-                    nivel = nivel_row.iloc[0]['NIVEL']
-                    
-                return user_row.iloc[0]['NOMBRE_REAL'], nivel
+                return self.get_info_usuario(usuario) # Reutilizamos la lógica
             return None, None
             
         except Exception as e:
             print(f"Error en login: {e}")
+            return None, None
+
+    # --- NUEVA FUNCIÓN PARA EL AUTO-LOGIN ---
+    def get_info_usuario(self, usuario):
+        try:
+            ws = self.sheet.worksheet("USUARIOS")
+            # Buscamos el nombre real
+            cell = ws.find(str(usuario))
+            nombre_real = ws.cell(cell.row, 2).value # Columna 2 es NOMBRE_REAL
+            
+            # Buscamos el nivel
+            ws_asig = self.sheet.worksheet("ASIGNACIONES")
+            try:
+                cell_asig = ws_asig.find(str(usuario))
+                nivel = ws_asig.cell(cell_asig.row, 2).value # Columna 2 es NIVEL
+            except:
+                nivel = "NIVEL_TEST"
+                
+            return nombre_real, nivel
+        except:
             return None, None
 
     def get_mis_horas(self, id_usuario):
@@ -86,13 +91,10 @@ class PadelDB:
     def get_matriz_disponibilidad(self, nivel):
         ws_asig = self.sheet.worksheet("ASIGNACIONES")
         users_nivel = [str(row['ID_USUARIO']) for row in ws_asig.get_all_records() if row['NIVEL'] == nivel]
-        
         ws_disp = self.sheet.worksheet("DISPONIBILIDAD")
         data_disp = ws_disp.get_all_records()
-        
         horarios_unicos = sorted(list(set([f"{d['FECHA']} {d['HORA_INICIO']}" for d in data_disp])))
         matriz = pd.DataFrame(index=users_nivel, columns=horarios_unicos).fillna("")
-        
         for row in data_disp:
             uid = str(row['ID_USUARIO'])
             time_slot = f"{row['FECHA']} {row['HORA_INICIO']}"
@@ -103,24 +105,19 @@ class PadelDB:
     def get_partidos_posibles(self, nivel):
         ws_partidos = self.sheet.worksheet("PARTIDOS")
         partidos = [p for p in ws_partidos.get_all_records() if p['ESTADO'] == 'PENDIENTE' and p['NIVEL'] == nivel]
-        
         matches = []
         ws_disp = self.sheet.worksheet("DISPONIBILIDAD")
         all_disp = ws_disp.get_all_records()
-        
         disp_set = set([(str(d['ID_USUARIO']), f"{d['FECHA']} {d['HORA_INICIO']}") for d in all_disp])
         all_slots = sorted(list(set([f"{d['FECHA']} {d['HORA_INICIO']}" for d in all_disp])))
-
         for p in partidos:
             jugadores_raw = str(p['JUGADORES_IDS']).split(",")
             jugadores = [j.strip() for j in jugadores_raw]
             if len(jugadores) < 4: continue
-            
             coincidencias = []
             for slot in all_slots:
                 if all( (j, slot) in disp_set for j in jugadores ):
                     coincidencias.append(slot)
-            
             if coincidencias:
                 matches.append({
                     "id_partido": p['ID_PARTIDO'],

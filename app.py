@@ -64,10 +64,12 @@ OPCIONES_HORAS = [
     "21:00", "21:30", "22:00", "22:30", "23:00"
 ]
 
-# --- FUNCIÓN NUEVA: EL POPUP DE CONFIRMACIÓN ---
+# --- POPUP MEJORADO (CON ESPACIO) ---
 @st.dialog("✅ ¡Confirmado!")
 def popup_guardado(nombre):
     st.write(f"Perfecto, muchas gracias por marcar tu disponibilidad, **{nombre}**.")
+    # AÑADIMOS DOBLE SALTO DE LÍNEA PARA QUE EL BOTÓN NO PISE EL TEXTO
+    st.markdown("<br><br>", unsafe_allow_html=True)
     if st.button("Cerrar", type="primary"):
         st.rerun()
 
@@ -91,6 +93,19 @@ if 'db' not in st.session_state:
     except: st.stop()
 if 'user' not in st.session_state: st.session_state.user = None
 
+# --- LÓGICA DE AUTO-LOGIN (PERSISTENCIA) ---
+# Si no hay usuario logueado, miramos la URL
+if st.session_state.user is None:
+    # Leemos el parámetro 'u' de la URL (ej: ?u=DD08)
+    params = st.query_params
+    if "u" in params:
+        user_id_url = params["u"]
+        # Intentamos recuperar datos de ese usuario
+        n, l = st.session_state.db.get_info_usuario(user_id_url)
+        if n:
+            st.session_state.user = {'id': user_id_url, 'nombre': n, 'nivel': l}
+            # No hacemos rerun aquí para evitar bucles, el flujo continuará a main_app
+
 # --- VISTAS ---
 def login():
     st.markdown("<br><br><br>", unsafe_allow_html=True)
@@ -108,6 +123,8 @@ def login():
                     n, l = st.session_state.db.validar_login(u, p)
                     if n:
                         st.session_state.user = {'id': u, 'nombre': n, 'nivel': l}
+                        # GUARDAMOS EL USUARIO EN LA URL PARA QUE NO SE BORRE AL REFRESCAR
+                        st.query_params["u"] = u 
                         st.rerun()
                     else: st.error("Error credenciales")
 
@@ -124,8 +141,12 @@ def main_app():
     
     c_titulo, c_vacio, c_boton = st.columns([3, 4, 1], vertical_alignment="center") 
     c_titulo.markdown(f"### HOLA, {st.session_state.user['nombre']}")
+    
     if c_boton.button("SALIR", key="logout", use_container_width=True):
+        st.session_state.user = None
         st.session_state.clear()
+        # BORRAMOS EL USUARIO DE LA URL AL SALIR
+        st.query_params.clear()
         st.rerun()
 
     st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #eee;'/>", unsafe_allow_html=True)
@@ -209,16 +230,12 @@ def main_app():
     with zona_panel:
         st.markdown("<div style='margin-top: 60px;'></div>", unsafe_allow_html=True)
         
-        # AQUÍ ES DONDE LANZAMOS EL POPUP AL GUARDAR
         if st.button("💾 GUARDAR DISPONIBILIDAD", type="primary", use_container_width=True):
             try:
                 st.session_state.db.guardar_disponibilidad(st.session_state.user['id'], nuevos_slots_usuario)
                 st.session_state.mis_slots_cache = nuevos_slots_usuario
                 st.session_state.needs_match_refresh = True
-                
-                # LLAMADA AL POPUP
                 popup_guardado(st.session_state.user['nombre'])
-                
             except Exception as e:
                 st.error("Error guardando. Espera unos segundos.")
 
