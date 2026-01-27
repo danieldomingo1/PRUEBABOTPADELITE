@@ -117,9 +117,35 @@ class PadelDB:
             st.error("❌ No se encuentra configuración de credenciales. Verifica credentials.json, Secrets, o variables de entorno.")
             st.stop()
             
-        client = gspread.authorize(creds)
-        self.spreadsheet_id = '15MAbaPH1gqrCIcUtj6JgdSJXiYMdOBNIxaOqtAHsOB0'  # PadelLite v2
-        self.sheet = client.open_by_key(self.spreadsheet_id)
+        try:
+            client = gspread.authorize(creds)
+            self.spreadsheet_id = '15MAbaPH1gqrCIcUtj6JgdSJXiYMdOBNIxaOqtAHsOB0'  # PadelLite v2
+            self.sheet = client.open_by_key(self.spreadsheet_id)
+        except Exception as e:
+            # DEBUG CRÍTICO PARA EL USUARIO EN PANTALLA
+            import traceback
+            st.error(f"❌ Error fatal conectando con Google Sheets: {e}")
+            with st.expander("🕵️ Ver detalles del error (Enviar captura)", expanded=True):
+                st.code(traceback.format_exc())
+                st.write("--- ANÁLISIS DE LA CLAVE PRIVADA ---")
+                
+                # Intentamos recuperar la clave usada
+                pk_debug = "No encontrada"
+                if creds and hasattr(creds, 'service_account_private_key'):
+                    pk_debug = creds.service_account_private_key
+                elif 'creds_dict' in locals() and "private_key" in creds_dict:
+                    pk_debug = creds_dict["private_key"]
+                
+                if pk_debug and isinstance(pk_debug, str):
+                    st.write(f"Longitud: {len(pk_debug)}")
+                    st.write(f"Inicio: '{pk_debug[:10]}'")
+                    st.write(f"Fin: '{pk_debug[-10:]}'")
+                    st.write(f"¿Tiene \\n literals?: {'\\n' in pk_debug}")
+                    st.write(f"¿Tiene saltos de linea reales?: {'\n' in pk_debug}")
+                    st.write(f"¿Header BEGIN?: {'-----BEGIN PRIVATE KEY-----' in pk_debug}")
+                    st.write(f"¿Header END?: {'-----END PRIVATE KEY-----' in pk_debug}")
+                    st.write(f"Tipo de objeto creds: {type(creds)}")
+            st.stop()
         
         # Cache interno para reducir llamadas
         self._cache = {}
