@@ -1,4 +1,5 @@
 import streamlit as st
+print("🚀 INICIANDO APP DE STREAMLIT...") # Debug log
 import pandas as pd
 from backend import PadelDB
 from datetime import datetime, timedelta

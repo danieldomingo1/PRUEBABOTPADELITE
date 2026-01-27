@@ -48,8 +48,10 @@ class PadelDB:
         
         # OPCIÓN 3: Variables de entorno (Railway, Render, etc.)
         if creds is None:
+            print("🔍 Buscando credenciales en variables de entorno...")
             try:
                 if os.environ.get('GCP_PRIVATE_KEY'):
+                    print("✅ Variable GCP_PRIVATE_KEY encontrada")
                     # Reconstruir el diccionario de credenciales desde variables de entorno
                     # Manejar robustamente el formato de la clave privada
                     pk = os.environ.get('GCP_PRIVATE_KEY', '')
@@ -59,6 +61,12 @@ class PadelDB:
                     
                     # Reemplazar diferentes variantes de escape por saltos de línea reales
                     pk = pk.replace('\\n', '\n').replace('\\\\n', '\n')
+                    
+                    print(f"🔑 Longitud de la clave procesada: {len(pk)}")
+                    if "-----BEGIN PRIVATE KEY-----" in pk:
+                        print("✅ Header de clave privada encontrado")
+                    else:
+                        print("⚠️ Header de clave privada NO encontrado en la variable procesada")
                     
                     creds_dict = {
                         "type": os.environ.get('GCP_TYPE', 'service_account'),
