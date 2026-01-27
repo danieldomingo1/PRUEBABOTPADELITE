@@ -64,6 +64,7 @@ class PadelDB:
         
         creds = None
         creds_dict = None
+        errors = []  # Lista para acumular errores de carga
         
         # ----------------------------------------------------
         # ESTRATEGIA DE CARGA DE CREDENCIALES
@@ -73,8 +74,8 @@ class PadelDB:
         if os.path.exists('credentials.json'):
             try:
                 creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
-            except Exception:
-                pass
+            except Exception as e:
+                errors.append(f"Local: {e}")
         
         # 2. Streamlit Cloud Secrets (Producción 1)
         if creds is None:
@@ -88,6 +89,7 @@ class PadelDB:
                     
                     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
             except Exception as e:
+                errors.append(f"Secrets: {e}")
                 print(f"⚠️ Error secrets: {e}")
 
         # 3. Variables de Entorno (Render/Railway - Producción 2)
@@ -109,6 +111,7 @@ class PadelDB:
                     }
                     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
             except Exception as e:
+                errors.append(f"EnvVars: {e}")
                 print(f"⚠️ Error env vars: {e}")
 
         # ----------------------------------------------------
@@ -116,7 +119,7 @@ class PadelDB:
         # ----------------------------------------------------
         
         if creds is None:
-            st.error("❌ No se encuentran credenciales (credentials.json, Secrets o Env Vars).")
+            st.error(f"❌ No se encuentran credenciales. Detalle errores: {'; '.join(errors)}")
             st.stop()
             
         try:
