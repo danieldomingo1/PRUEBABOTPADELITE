@@ -3,58 +3,374 @@ import pandas as pd
 from backend import PadelDB
 from datetime import datetime, timedelta
 import pytz
+import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Liga Padel", layout="wide")
+st.set_page_config(
+    page_title="PadelLite", 
+    layout="centered",  # Centrado para móvil
+    initial_sidebar_state="collapsed"
+)
 
-# --- CSS DE DISEÑO FINAL ---
+# --- CSS PREMIUM MINIMAL ---
 st.markdown("""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-        
-        .block-container {
-            padding-top: 3.5rem !important; 
-            padding-bottom: 3rem !important;
-            padding-left: 3rem !important;
-            padding-right: 3rem !important;
-            max-width: 1600px;
-        }
-        
-        h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-            font-family: 'Bebas Neue', sans-serif !important;
-            letter-spacing: 1px;
-            padding-top: 0rem !important;
-            margin-bottom: 0rem !important;
-        }
-        h3 { font-size: 2rem !important; }
+<style>
+    /* === FONTS === */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons+Round');
+    
+    /* Material Icons Class */
+    .material-icons-round {
+        font-family: 'Material Icons Round';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 20px;
+        display: inline-block;
+        line-height: 1;
+        text-transform: none;
+        letter-spacing: normal;
+        word-wrap: normal;
+        white-space: nowrap;
+        direction: ltr;
+        vertical-align: middle;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        -moz-osx-font-smoothing: grayscale;
+        font-feature-settings: 'liga';
+    }
 
-        div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
-        
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding: 8px 12px !important;
-            border-radius: 10px !important;
-            border: 1px solid #e0e0e0;
-        }
-        
-        .week-header {
-            font-family: 'Bebas Neue', sans-serif !important;
-            font-size: 1.2rem;
-            color: #888;
-            margin-top: 10px;
-            margin-bottom: 10px !important;
-            letter-spacing: 1px;
-            border-bottom: 2px solid #1aa1b0;
-            display: inline-block;
-        }
+    /* === VARIABLES === */
+    :root {
+        --primary: #1E88E5;       /* Padel Blue - Court color */
+        --primary-light: #e3f2fd;
+        --primary-dark: #1565C0;
+        --accent: #D4D700;        /* Padel Yellow - Ball color (softened) */
+        --accent-light: #f7f8cc;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --bg: #f8fafc;
+        --bg-card: #ffffff;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
+        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        --radius: 10px;
+        --radius-lg: 14px;
+    }
 
-        p { margin-bottom: 0px !important; }
-        div[data-testid="column"] button { margin-top: 0px; padding-top: 0px; }
-        .stToggle { margin-top: 4px !important; }
-        
-        div[data-testid="stMarkdownContainer"] p {
-            line-height: 1.2;
-        }
-    </style>
+    /* === BASE === */
+    .stApp {
+        background-color: var(--bg) !important;
+    }
+    
+    /* Hide Streamlit Chrome */
+    header[data-testid="stHeader"] { display: none !important; }
+    footer { visibility: hidden; }
+    .stDeployButton { display: none; }
+    #MainMenu { visibility: hidden; }
+    
+    .block-container {
+        padding: 1rem 1rem 6rem 1rem !important;
+        max-width: 480px !important;
+        margin: 0 auto !important;
+    }
+
+    /* === TYPOGRAPHY === */
+    * {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    }
+    
+    h1, h2, h3 {
+        font-weight: 700 !important;
+        color: var(--text) !important;
+        letter-spacing: -0.025em !important;
+    }
+    
+    h1 { font-size: 1.875rem !important; }
+    h2 { font-size: 1.5rem !important; }
+    h3 { font-size: 1.125rem !important; }
+    
+    p, span, div, label {
+        color: var(--text);
+        line-height: 1.5;
+    }
+    
+    .text-muted {
+        color: var(--text-muted) !important;
+    }
+
+    /* === CARDS === */
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        box-shadow: var(--shadow) !important;
+        padding: 0.65rem 0.75rem !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+        box-shadow: var(--shadow-md) !important;
+        border-color: var(--primary-light) !important;
+    }
+
+    /* === BUTTONS === */
+    .stButton > button {
+        width: 100% !important;
+        background: var(--accent) !important;
+        color: #1a1a1a !important;
+        border: none !important;
+        border-radius: var(--radius) !important;
+        padding: 0.875rem 1.5rem !important;
+        font-weight: 600 !important;
+        font-size: 0.9375rem !important;
+        letter-spacing: -0.01em !important;
+        box-shadow: var(--shadow) !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    
+    .stButton > button:hover {
+        background: #c4c900 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: var(--shadow-md) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0) !important;
+    }
+    
+    /* Yellow Spinner - comprehensive selectors */
+    .stSpinner > div,
+    .stSpinner > div > div,
+    .stSpinner svg circle,
+    [data-testid="stSpinner"] > div,
+    [data-testid="stSpinner"] svg,
+    div[data-testid="stMarkdownContainer"] + div svg circle {
+        stroke: #D4D700 !important;
+        border-color: #D4D700 !important;
+        border-top-color: #D4D700 !important;
+    }
+    /* Dialog/Modal spinner */
+    [data-testid="stModal"] .stSpinner > div,
+    [role="dialog"] .stSpinner svg circle {
+        stroke: #D4D700 !important;
+    }
+    
+    /* Secondary Button (default) */
+    .stButton > button[kind="secondary"] {
+        background: transparent !important;
+        color: var(--text-muted) !important;
+        box-shadow: none !important;
+        border: 1px solid var(--border) !important;
+    }
+    
+    .stButton > button[kind="secondary"]:hover {
+        background: var(--bg) !important;
+        color: var(--text) !important;
+    }
+
+    /* === TOGGLE === */
+    .stToggle > label {
+        font-weight: 600 !important;
+        font-size: 0.9375rem !important;
+    }
+    
+    .stToggle div[role="switch"] {
+        background-color: #cbd5e1 !important;
+    }
+    
+    .stToggle div[role="switch"][aria-checked="true"] {
+        background-color: var(--accent) !important;
+    }
+
+    /* === SLIDER === */
+    .stSlider {
+        padding: 0 !important;
+    }
+    .stSlider > div > div > div[data-baseweb="slider"] {
+        padding: 0.5rem 0 !important;
+    }
+    .stSlider [data-testid="stTickBarMin"], 
+    .stSlider [data-testid="stTickBarMax"] {
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        color: var(--primary) !important;
+    }
+    /* Slider Track - Blue */
+    .stSlider div[data-baseweb="slider"] div[role="slider"] {
+        background: var(--accent) !important;
+        border: 2px solid white !important;
+        box-shadow: var(--shadow-md) !important;
+    }
+
+    /* === TABS === */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.2rem !important;
+        background: transparent !important;
+        padding: 0 !important;
+        border-radius: var(--radius) !important;
+        display: inline-flex !important;
+        width: auto !important;
+    }
+    
+    /* Hide the tab line/border */
+    .stTabs [data-baseweb="tab-highlight"],
+    .stTabs [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px !important;
+        padding: 0.35rem 0.5rem !important;
+        font-weight: 600 !important;
+        font-size: 0.65rem !important;
+        color: #64748b !important;
+        background: #e2e8f0 !important;
+        white-space: nowrap !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: var(--accent) !important;
+        color: #1a1a1a !important;
+        box-shadow: var(--shadow) !important;
+    }
+
+    /* === EXPANDER === */
+    div[data-testid="stExpander"] {
+        background: transparent !important;
+        border: none !important;
+    }
+    
+    div[data-testid="stExpander"] details > summary {
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius) !important;
+        padding: 1rem !important;
+        font-weight: 600 !important;
+        color: var(--text) !important;
+    }
+    
+    /* Fix expander icon */
+    div[data-testid="stExpander"] details > summary svg {
+        display: inline-block !important;
+    }
+    /* CRITICAL FIX: Force expander text to not use Material Icons font */
+    div[data-testid="stExpander"] details > summary {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+    div[data-testid="stExpander"] details > summary span {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+    div[data-testid="stExpander"] details > summary p {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+
+    /* === INPUTS === */
+    .stTextInput > div > div > input {
+        border-radius: var(--radius) !important;
+        border: 1px solid var(--border) !important;
+        padding: 0.75rem 1rem !important;
+        font-size: 1rem !important;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 3px var(--primary-light) !important;
+    }
+    
+    /* Hide form submit helper text - AGGRESSIVE */
+    .stForm small {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        overflow: hidden !important;
+    }
+    /* Hide the "Press Enter to submit" caption specifically */
+    .stForm [class*="InputInstructions"],
+    .stForm [class*="instructions"],
+    div[data-testid="InputInstructions"],
+    .stForm p:has(+ button),
+    .stForm div[data-baseweb="form-control-container"] > div:last-child:not(:first-child) {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    /* Hide any text with "Enter" */
+    .stForm *[class*="Caption"] {
+        display: none !important;
+    }
+
+    /* === SUCCESS/ERROR STATES === */
+    .stSuccess {
+        background: #ecfdf5 !important;
+        border: 1px solid #a7f3d0 !important;
+        border-radius: var(--radius) !important;
+        color: #065f46 !important;
+    }
+    
+    .stError {
+        background: #fef2f2 !important;
+        border: 1px solid #fecaca !important;
+        border-radius: var(--radius) !important;
+        color: #991b1b !important;
+    }
+
+    /* === ANIMATIONS === */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+    
+    .element-container {
+        animation: fadeIn 0.3s ease-out backwards;
+    }
+    
+    /* Stagger animation */
+    .element-container:nth-child(1) { animation-delay: 0.05s; }
+    .element-container:nth-child(2) { animation-delay: 0.1s; }
+    .element-container:nth-child(3) { animation-delay: 0.15s; }
+    .element-container:nth-child(4) { animation-delay: 0.2s; }
+    .element-container:nth-child(5) { animation-delay: 0.25s; }
+
+    /* === CUSTOM CLASSES === */
+    .badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .badge-primary {
+        background: var(--primary-light);
+        color: var(--primary-dark);
+    }
+    
+    .badge-success {
+        background: #dcfce7;
+        color: #166534;
+    }
+    
+    .badge-muted {
+        background: var(--bg);
+        color: var(--text-muted);
+    }
+    
+    .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 1rem 0;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 # --- LISTA DE HORAS ---
@@ -64,218 +380,393 @@ OPCIONES_HORAS = [
     "21:00", "21:30", "22:00", "22:30", "23:00"
 ]
 
-# --- POPUP MEJORADO (CON ESPACIO) ---
-@st.dialog("✅ ¡Confirmado!")
-def popup_guardado(nombre):
-    st.write(f"Perfecto, muchas gracias por marcar tu disponibilidad, **{nombre}**.")
-    # AÑADIMOS DOBLE SALTO DE LÍNEA PARA QUE EL BOTÓN NO PISE EL TEXTO
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    if st.button("Cerrar", type="primary"):
-        st.rerun()
+# --- POPUP DE GUARDADO ---
+@st.dialog("Guardando", width="small")
+def popup_guardando(db, user_id, user_nombre, id_grupo, slots):
+    placeholder = st.empty()
+    
+    if st.session_state.get('guardado_exito', False):
+        with placeholder.container():
+            st.markdown("""
+                <div style='text-align: center; padding: 2rem;'>
+                    <h3 style='margin: 0 0 0.75rem; color: var(--primary);'>¡Disponibilidad guardada!</h3>
+                    <p style='color: var(--text-muted); margin: 0 0 1rem; font-size: 0.9rem;'>Si compartes disponibilidad con tus compañeros, te saldrán los partidos en la sección "Partidos disponibles".</p>
+                    <p style='color: var(--text); margin: 0 0 1rem; font-size: 0.85rem; background: #fffbeb; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #D4D700;'>📱 <strong>Avisa a tus compañeros por WhatsApp</strong> de que ya has puesto tu disponibilidad para que ellos pongan la suya.</p>
+                    <p style='color: var(--text-muted); margin: 0; font-size: 0.8rem;'>Puedes modificar tu disponibilidad en cualquier momento.</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        if st.button("Continuar", type="primary", use_container_width=True):
+            st.session_state.mostrar_popup_guardado = False
+            st.session_state.guardado_exito = False
+            st.rerun()
+        return
 
-def generar_slots_desde_seleccion(fecha_str, hora_inicio_str, hora_fin_str):
-    slots = []
+    with placeholder.container():
+        st.markdown("""
+            <div style='text-align: center; padding: 2rem;'>
+                <div style='width: 48px; height: 48px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem;'></div>
+                <p style='color: var(--text-muted); margin: 0;'>Guardando disponibilidad...</p>
+            </div>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        """, unsafe_allow_html=True)
+    
     try:
-        idx_inicio = OPCIONES_HORAS.index(hora_inicio_str)
-        idx_fin = OPCIONES_HORAS.index(hora_fin_str)
-        idx_ultimo_inicio = idx_fin - 3 
-        current_idx = idx_inicio
-        while current_idx <= idx_ultimo_inicio:
-            hora_str = OPCIONES_HORAS[current_idx]
-            slots.append(f"{fecha_str} {hora_str}")
-            current_idx += 1
-    except ValueError: pass
-    return slots
+        db.guardar_disponibilidad(user_id, id_grupo, slots)
+        st.session_state.mis_slots_cache = slots
+        st.session_state.needs_match_refresh = True
+        st.session_state.guardado_exito = True
+        time.sleep(0.5)
+        st.rerun()
+            
+    except Exception as e:
+        placeholder.empty()
+        with placeholder.container():
+            st.markdown("""
+                <div style='text-align: center; padding: 2rem;'>
+                    <div style='width: 64px; height: 64px; background: #fef2f2; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;'>
+                        <span class="material-icons-round" style="font-size: 32px; color: #dc2626;">close</span>
+                    </div>
+                    <h3 style='margin: 0 0 0.5rem; color: #dc2626;'>Error</h3>
+                    <p style='color: var(--text-muted); margin: 0;'>No se pudo guardar. Inténtalo de nuevo.</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        if st.button("Cerrar", type="primary", use_container_width=True):
+            st.session_state.mostrar_popup_guardado = False
+            st.rerun()
 
-# --- INICIO ---
+def crear_registro_disponibilidad(fecha_str, hora_inicio_str, hora_fin_str):
+    return {
+        'fecha': fecha_str,
+        'hora_inicio': hora_inicio_str,
+        'hora_fin': hora_fin_str
+    }
+
+# --- INICIALIZACIÓN ---
 if 'db' not in st.session_state:
-    try: st.session_state.db = PadelDB()
-    except: st.stop()
-if 'user' not in st.session_state: st.session_state.user = None
+    try: 
+        st.session_state.db = PadelDB()
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
+        st.stop()
 
-# --- LÓGICA DE AUTO-LOGIN (PERSISTENCIA) ---
-# Si no hay usuario logueado, miramos la URL
+if 'user' not in st.session_state: 
+    st.session_state.user = None
+
+# Auto-login desde URL
 if st.session_state.user is None:
-    # Leemos el parámetro 'u' de la URL (ej: ?u=DD08)
     params = st.query_params
     if "u" in params:
         user_id_url = params["u"]
-        # Intentamos recuperar datos de ese usuario
         n, l = st.session_state.db.get_info_usuario(user_id_url)
         if n:
             st.session_state.user = {'id': user_id_url, 'nombre': n, 'nivel': l}
-            # No hacemos rerun aquí para evitar bucles, el flujo continuará a main_app
 
-# --- VISTAS ---
+# --- VISTA: LOGIN ---
 def login():
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    _, col_login, _ = st.columns([1, 1.2, 1])
-    with col_login:
-        st.markdown("<h2 style='text-align: center; color: #1aa1b0; font-size: 3rem !important;'>ACCESO LIGA</h2>", unsafe_allow_html=True)
-        st.write("") 
-        with st.container(border=True):
-            with st.form("login"):
-                st.write("") 
-                u = st.text_input("Usuario")
-                p = st.text_input("Contraseña", type="password")
-                st.write("") 
-                if st.form_submit_button("ENTRAR", type="primary", use_container_width=True):
+    st.markdown("<div style='height: 3rem;'></div>", unsafe_allow_html=True)
+    
+    # Logo / Título - Amarillo igual que botón y sliders
+    st.markdown("""
+        <div style='text-align: center; margin-bottom: 3rem;'>
+            <h1 style='font-size: 1.8rem !important; font-weight: 800 !important; background: linear-gradient(135deg, #D4D700 0%, #E6E82D 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0;'>
+                DISPONIBILIDAD BULIP PRUEBA
+            </h1>
+            <p style='color: var(--text-muted); font-size: 0.8rem; margin-top: 0.5rem;'>Hecho por: daniel domingo</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    with st.container(border=True):
+        with st.form("login"):
+            st.markdown("<p style='text-align: center; color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1.5rem;'>Introduce tus credenciales</p>", unsafe_allow_html=True)
+            
+            u = st.text_input("Usuario", placeholder="Tu ID de usuario", label_visibility="collapsed")
+            p = st.text_input("Contraseña", type="password", placeholder="Contraseña", label_visibility="collapsed")
+            
+            st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+            
+            if st.form_submit_button("Entrar", type="primary", use_container_width=True):
+                with st.spinner("Verificando..."):
                     n, l = st.session_state.db.validar_login(u, p)
-                    if n:
-                        st.session_state.user = {'id': u, 'nombre': n, 'nivel': l}
-                        # GUARDAMOS EL USUARIO EN LA URL PARA QUE NO SE BORRE AL REFRESCAR
-                        st.query_params["u"] = u 
-                        st.rerun()
-                    else: st.error("Error credenciales")
+                if n:
+                    st.session_state.user = {'id': u, 'nombre': n, 'nivel': l}
+                    st.query_params["u"] = u 
+                    st.rerun()
+                else: 
+                    st.error("Credenciales incorrectas")
 
+# --- VISTA: MAIN APP ---
 def main_app():
+    # Cache de disponibilidad
     if 'mis_slots_cache' not in st.session_state:
         try:
             st.session_state.mis_slots_cache = st.session_state.db.get_mis_horas(st.session_state.user['id'])
-        except Exception as e:
-            st.error("Error de conexión. Espera un minuto y recarga.")
+        except:
+            st.error("Error de conexión")
             return
 
     mis_slots_guardados = st.session_state.mis_slots_cache
-    nuevos_slots_usuario = []
+    nuevos_registros = []
     
-    c_titulo, c_vacio, c_boton = st.columns([3, 4, 1], vertical_alignment="center") 
-    c_titulo.markdown(f"### HOLA, {st.session_state.user['nombre']}")
+    # === HEADER (sin botón de salir) ===
+    nombre_completo = st.session_state.user['nombre']
+    st.markdown(f"""
+        <div style='margin-bottom: 0.75rem;'>
+            <span style='color: var(--text-muted); font-size: 0.75rem;'>Hola, </span>
+            <span style='font-size: 1.2rem; font-weight: 700;'>{nombre_completo}</span>
+        </div>
+    """, unsafe_allow_html=True)
     
-    if c_boton.button("SALIR", key="logout", use_container_width=True):
-        st.session_state.user = None
-        st.session_state.clear()
-        # BORRAMOS EL USUARIO DE LA URL AL SALIR
-        st.query_params.clear()
-        st.rerun()
-
-    st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #eee;'/>", unsafe_allow_html=True)
-    
+    # === CALENDARIO ===
     zona_madrid = pytz.timezone('Europe/Madrid')
     hoy = datetime.now(zona_madrid)
     lunes_esta_semana = hoy - timedelta(days=hoy.weekday())
     
-    meses = {1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL", 5: "MAYO", 6: "JUNIO", 
-             7: "JULIO", 8: "AGOSTO", 9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"}
-    nombre_mes = meses[hoy.month]
-
-    inicio_s1 = lunes_esta_semana
-    fin_s1 = inicio_s1 + timedelta(days=6)
-    inicio_s2 = inicio_s1 + timedelta(days=7)
-    fin_s2 = inicio_s2 + timedelta(days=6)
-
-    # === LAYOUT ===
-    zona_agenda, zona_panel = st.columns([2.2, 1], gap="large") 
-
-    # --- ZONA IZQUIERDA: AGENDA ---
-    with zona_agenda:
-        st.markdown(f"<h3 style='text-align: center; color: #1aa1b0; margin-bottom: 10px !important;'>📅 {nombre_mes}</h3>", unsafe_allow_html=True)
-        st.markdown("**💡 Instrucciones:** Selecciona tus días.<br>**Nota:** La hora final es la de *finalización* (ej: hasta las 22:00 significa que el partido empieza a las 20:30).", unsafe_allow_html=True)
-        st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
-        
-        col_sem1, col_sem2 = st.columns(2, gap="medium")
-        
-        for i in range(14):
-            fecha = lunes_esta_semana + timedelta(days=i)
-            fecha_str = fecha.strftime('%Y-%m-%d')
-            es_pasado = fecha.date() < hoy.date()
+    # Selector de semanas
+    st.markdown("<h3 style='margin-bottom: 0.5rem;'>Tu disponibilidad</h3>", unsafe_allow_html=True)
+    st.markdown("""
+        <p style='color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem; line-height: 1.5;'>
+            Indica tu hora de inicio y fin de disponibilidad. 
+            <span style='color: var(--text); font-weight: 500;'>La hora final es cuando termina el partido</span>
+            (Ej: Si pones 22:00, el partido empieza a las 20:30).
+        </p>
+    """, unsafe_allow_html=True)
+    
+    semanas = []
+    for i in range(4):
+        inicio = lunes_esta_semana + timedelta(days=7*i)
+        fin = inicio + timedelta(days=6)
+        semanas.append((inicio, fin, i*7))
+    
+    # Tabs para semanas - usar fechas como etiquetas
+    meses_cortos = {1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun", 
+                    7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"}
+    tab_labels = []
+    for inicio, fin, _ in semanas:
+        if inicio.month == fin.month:
+            tab_labels.append(f"{inicio.day}-{fin.day} {meses_cortos[inicio.month]}")
+        else:
+            tab_labels.append(f"{inicio.day}{meses_cortos[inicio.month]}-{fin.day}{meses_cortos[fin.month]}")
+    tabs = st.tabs(tab_labels)
+    
+    dias_es = {"Mon": "Lunes", "Tue": "Martes", "Wed": "Miércoles", "Thu": "Jueves", "Fri": "Viernes", "Sat": "Sábado", "Sun": "Domingo"}
+    meses_completos = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
+                    7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
+    
+    for tab_idx, tab in enumerate(tabs):
+        with tab:
+            inicio_sem, fin_sem, offset = semanas[tab_idx]
             
-            contenedor = col_sem1 if i < 7 else col_sem2
+            # No need for header inside tab since tab label already shows dates
             
-            with contenedor:
-                if i == 0:
-                    st.markdown(f"<div class='week-header'>SEMANA DEL {inicio_s1.day} AL {fin_s1.day}</div>", unsafe_allow_html=True)
-                elif i == 7:
-                    st.markdown(f"<div class='week-header'>SEMANA DEL {inicio_s2.day} AL {fin_s2.day}</div>", unsafe_allow_html=True)
-
+            
+            # Días de la semana
+            for dia_idx in range(7):
+                i = offset + dia_idx
+                fecha = lunes_esta_semana + timedelta(days=i)
+                fecha_str = fecha.strftime('%Y-%m-%d')
+                es_pasado = fecha.date() < hoy.date()
+                
+                dia_nombre = dias_es[fecha.strftime('%a')]
+                dia_num = fecha.day
+                
+                registro_hoy = next((r for r in mis_slots_guardados if r['fecha'] == fecha_str), None)
+                activo_por_defecto = registro_hoy is not None
+                
                 with st.container(border=True):
-                    dias_es = {"Mon":"Lunes", "Tue":"Martes", "Wed":"Miércoles", "Thu":"Jueves", "Fri":"Viernes", "Sat":"Sábado", "Sun":"Domingo"}
-                    dia_nombre = dias_es[fecha.strftime('%a')]
-                    dia_num = fecha.day
-                    
-                    horas_guardadas_hoy = [h for h in mis_slots_guardados if h.startswith(fecha_str)]
-                    activo_por_defecto = bool(horas_guardadas_hoy)
-
                     if es_pasado:
-                        st.markdown(f"<span style='color: #bbb;'>**{dia_nombre} {dia_num}**</span>", unsafe_allow_html=True)
-                        st.toggle("Disp", value=False, key=f"tog_{i}", label_visibility="collapsed", disabled=True)
-                        st.caption("⛔ Día pasado")
+                        st.markdown(f"<span style='color: var(--text-muted);'>{dia_nombre} {dia_num}</span>", unsafe_allow_html=True)
                     else:
-                        c_info, c_slider = st.columns([1.3, 3], vertical_alignment="center")
-                        with c_info:
-                            st.markdown(f"**{dia_nombre} {dia_num}**")
-                            esta_activo = st.toggle("Disp", value=activo_por_defecto, key=f"tog_{i}", label_visibility="collapsed")
+                        col1, col2 = st.columns([1.2, 2])
+                        with col1:
+                            activo = st.toggle(f"{dia_nombre} {dia_num}", value=activo_por_defecto, key=f"t_{i}")
                         
-                        with c_slider:
-                            val_defecto = ("16:30", "22:00")
-                            if horas_guardadas_hoy:
-                                horas_solo = sorted([h.split(" ")[1] for h in horas_guardadas_hoy])
-                                if horas_solo:
-                                    try:
-                                        idx_last = OPCIONES_HORAS.index(horas_solo[-1])
-                                        idx_end = min(idx_last + 3, len(OPCIONES_HORAS)-1)
-                                        val_defecto = (horas_solo[0], OPCIONES_HORAS[idx_end])
-                                    except: pass
-                            
-                            rango = st.select_slider(
-                                "R", options=OPCIONES_HORAS, value=val_defecto, 
-                                key=f"sl_{i}", label_visibility="collapsed", 
-                                disabled=not esta_activo
-                            )
-                        
-                        if esta_activo:
-                            nuevos_slots_usuario.extend(generar_slots_desde_seleccion(fecha_str, rango[0], rango[1]))
+                        if activo:
+                            with col2:
+                                val = (registro_hoy['hora_inicio'], registro_hoy['hora_fin']) if registro_hoy else ("17:00", "21:00")
+                                rango = st.select_slider("Horario", options=OPCIONES_HORAS, value=val, key=f"s_{i}", label_visibility="collapsed")
+                                nuevos_registros.append(crear_registro_disponibilidad(fecha_str, rango[0], rango[1]))
+    
+    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+    
+    # === BOTÓN GUARDAR ===
+    if st.button("Guardar disponibilidad", type="primary", use_container_width=True):
+        st.session_state.mostrar_popup_guardado = True
 
-    # --- ZONA DERECHA: PANEL ---
-    with zona_panel:
-        st.markdown("<div style='margin-top: 60px;'></div>", unsafe_allow_html=True)
-        
-        if st.button("💾 GUARDAR DISPONIBILIDAD", type="primary", use_container_width=True):
-            try:
-                st.session_state.db.guardar_disponibilidad(st.session_state.user['id'], nuevos_slots_usuario)
-                st.session_state.mis_slots_cache = nuevos_slots_usuario
-                st.session_state.needs_match_refresh = True
-                popup_guardado(st.session_state.user['nombre'])
-            except Exception as e:
-                st.error("Error guardando. Espera unos segundos.")
-
-        st.markdown(f"""
-            <div style="text-align: center; margin: 15px 0;">
-                <a href="https://wa.me/?text=Disponibilidad actualizada." target="_blank" 
-                   style="color: #25D366; text-decoration: none; font-size: 0.9rem; font-weight: bold;">
-                   📢 Avisar por WhatsApp
-                </a>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #eee;'/>", unsafe_allow_html=True)
-
-        st.markdown("##### 🔥 Partidos Posibles")
-        
-        if 'matches_cache' not in st.session_state or st.session_state.get('needs_match_refresh', False):
+    if st.session_state.get('mostrar_popup_guardado', False):
+        popup_guardando(
+            st.session_state.db, 
+            st.session_state.user['id'], 
+            st.session_state.user['nombre'], 
+            st.session_state.user.get('nivel', ''),
+            nuevos_registros
+        )
+    
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    
+    # === PARTIDOS ===
+    if 'matches_cache' not in st.session_state or st.session_state.get('needs_match_refresh', False):
+        with st.spinner("Cargando partidos..."):
             try:
                 st.session_state.matches_cache = st.session_state.db.get_partidos_posibles(st.session_state.user['nivel'])
+                st.session_state.historial_cache = st.session_state.db.get_mis_partidos(st.session_state.user['nivel'])
                 st.session_state.needs_match_refresh = False
-            except: pass 
-            
-        matches = st.session_state.get('matches_cache', [])
+            except: 
+                pass
         
-        if matches:
-            for m in matches:
-                with st.container(border=True):
-                    st.markdown(f"**{m['id_partido']}**")
-                    st.caption(f"👥 {m['jugadores']}")
-                    st.markdown(f":green-background[⏰ {', '.join(m['slots'])}]")
-                    
-                    if st.button("✅ Cerrar", key=m['id_partido'], use_container_width=True):
-                        st.session_state.db.cerrar_partido(m['id_partido'])
-                        st.session_state.needs_match_refresh = True
-                        st.balloons()
-                        st.rerun()
+    matches = st.session_state.get('matches_cache', [])
+    historial = st.session_state.get('historial_cache', [])
+    
+    programados = [p for p in historial if p['ESTADO'] == 'PROGRAMADO']
+    jugados = [p for p in historial if p['ESTADO'] in ['JUGADO', 'CERRADO']]
+    
+    # Partidos Disponibles - Cards con degradado azul
+    if matches:
+        st.markdown("<h3>Partidos disponibles</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #64748b; font-size: 0.8rem; margin-bottom: 1rem;'>Partidos donde coincides en disponibilidad con tus compañeros</p>", unsafe_allow_html=True)
+        
+        for m in matches:
+            # Separar parejas
+            try:
+                eq1, eq2 = m['jugadores_names'].split(" vs ")
+            except:
+                eq1, eq2 = m['jugadores_names'], ""
+            
+            # Card con botón azul integrado
+            card_html = f"""
+                <div style='background: linear-gradient(135deg, #e3f2fd 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #1E88E5;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-weight: 600; font-size: 0.85rem;'>{m['titulo']}</span>
+                        <span style='background: #1E88E5; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>DISPONIBLE</span>
+                    </div>
+                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{m['fecha_fmt']} · {m['hora_inicio']} - {m['hora_fin']}</p>
+                    <div style='font-size: 0.85rem; margin-bottom: 0.75rem;'>
+                        <p style='margin: 0; font-weight: 500;'>{eq1}</p>
+                        <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
+                        <p style='margin: 0; font-weight: 500;'>{eq2}</p>
+                    </div>
+                </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+            
+            # Usar st.form para aislar el botón y poder aplicar CSS específico
+            partido_id = m['id_partido']
+            with st.form(key=f"form_{partido_id}", border=False):
+                # CSS ultra-específico para botón azul
+                st.markdown("""
+                    <style>
+                    /* Botón azul FORZADO */
+                    form[data-testid="stForm"] button,
+                    form button[kind="primary"],
+                    [data-testid="stFormSubmitButton"] button,
+                    [data-testid="stFormSubmitButton"] > button[kind="primary"],
+                    div[data-testid="stForm"] button[type="submit"],
+                    .stForm button {
+                        background-color: #1E88E5 !important;
+                        background: #1E88E5 !important;
+                        color: white !important;
+                        border: none !important;
+                    }
+                    form[data-testid="stForm"] button:hover,
+                    [data-testid="stFormSubmitButton"] button:hover {
+                        background-color: #1565C0 !important;
+                        background: #1565C0 !important;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+                
+                submitted = st.form_submit_button("Confirmar partido", type="primary", use_container_width=True)
+                if submitted:
+                    st.session_state.db.programar_partido(m['id_partido'], m['fecha'], f"{m['hora_inicio']} - {m['hora_fin']}")
+                    st.session_state.needs_match_refresh = True
+                    st.success("¡Partido confirmado!")
+                    time.sleep(1)
+                    st.rerun()
+    
+    # Próximos Partidos - Estilo con degradado amarillo
+    if programados:
+        st.markdown("<h3 style='margin-top: 1.5rem;'>Próximos partidos</h3>", unsafe_allow_html=True)
+        
+        for p in programados:
+            titulo = p.get('titulo_fmt', p['ID_PARTIDO'])
+            nombres = p.get('nombres_str', "")
+            
+            # Separar parejas para mostrar en 3 líneas
+            try:
+                eq1, eq2 = nombres.split(" vs ")
+            except:
+                eq1, eq2 = nombres, ""
+            
+            card_html = f"""
+                <div style='background: linear-gradient(135deg, #f7f8cc 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #D4D700;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-weight: 600; font-size: 0.85rem;'>{titulo}</span>
+                        <span style='background: #D4D700; color: #1a1a1a; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>PROGRAMADO</span>
+                    </div>
+                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{p['FECHA']} · {p['HORA']}</p>
+                    <div style='font-size: 0.85rem;'>
+                        <p style='margin: 0; font-weight: 500;'>{eq1}</p>
+                        <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
+                        <p style='margin: 0; font-weight: 500;'>{eq2}</p>
+                    </div>
+                </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+    
+    # Historial de Partidos Jugados - Con botón para expandir
+    st.markdown("<h3 style='margin-top: 1.5rem;'>Historial de partidos</h3>", unsafe_allow_html=True)
+    
+    if 'mostrar_historial' not in st.session_state:
+        st.session_state.mostrar_historial = False
+    
+    btn_text = "▼ Ver historial de partidos" if not st.session_state.mostrar_historial else "▲ Ocultar historial"
+    st.markdown(f"""
+        <style>
+        div[data-testid="stButton"][key="toggle_historial"] button {{
+            background: linear-gradient(135deg, #f1f5f9 0%, #fff 100%) !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #64748b !important;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+    
+    if st.button(btn_text, key="toggle_historial", use_container_width=True):
+        st.session_state.mostrar_historial = not st.session_state.mostrar_historial
+        st.rerun()
+    
+    if st.session_state.mostrar_historial:
+        if jugados:
+            for p in jugados:
+                titulo = p.get('titulo_fmt', p['ID_PARTIDO'])
+                nombres = p.get('nombres_str', "")
+                
+                # Separar parejas
+                try:
+                    eq1, eq2 = nombres.split(" vs ")
+                except:
+                    eq1, eq2 = nombres, ""
+                
+                card_html = f"""
+                    <div style='background: linear-gradient(135deg, #e2e8ed 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #94a3b8;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                            <span style='font-weight: 600; font-size: 0.85rem;'>{titulo}</span>
+                            <span style='background: #94a3b8; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>JUGADO</span>
+                        </div>
+                        <p style='font-size: 0.7rem; color: #64748b; margin: 0 0 0.5rem;'>{p['FECHA']}</p>
+                        <div style='font-size: 0.8rem;'>
+                            <p style='margin: 0;'>{eq1}</p>
+                            <p style='margin: 0.1rem 0; font-size: 0.65rem; color: #94a3b8; font-weight: 600;'>vs</p>
+                            <p style='margin: 0;'>{eq2}</p>
+                        </div>
+                    </div>
+                """
+                st.markdown(card_html, unsafe_allow_html=True)
         else:
-            with st.container(border=True):
-                st.info("Sin coincidencias (4/4) aún.")
-                st.caption("Rellena tu horario.")
+            st.markdown("<p style='color: #64748b; font-size: 0.85rem; text-align: center;'>No hay partidos jugados aún</p>", unsafe_allow_html=True)
 
-if st.session_state.user is None: login()
-else: main_app()
+# === ROUTER ===
+if st.session_state.user is None:
+    login()
+else:
+    main_app()

@@ -1,7 +1,5 @@
-python-telegram-bot
 gspread
 oauth2client
 pandas
-python-dotenv
 streamlit
 pytz

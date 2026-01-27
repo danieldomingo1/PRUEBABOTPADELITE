@@ -1,5 +1,32 @@
+# Archivos sensibles - NO subir
 credentials.json
-__pycache__/
+secrets_template.toml
 .streamlit/secrets.toml
 .env
-.venv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Scripts de utilidad (no necesarios para producción)
+admin_populate.py
+importar_jugado.py
+importar_partidos.py
+simulacion_match.py
+actualizar_grupos.py
+actualizar_estructura_y_datos_v2.py
+crear_base_datos.py
+setup_test_disponibilidad.py
+
+# Otros
+*.log
+.DS_Store
+Thumbs.db
