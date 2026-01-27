@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import streamlit as st
 import time
+import os
 from functools import wraps
 
 # --- DECORADOR DE REINTENTOS ---
@@ -30,13 +31,13 @@ class PadelDB:
         scope = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
         creds = None
         
-        # Primero intentamos con archivo local (desarrollo)
+        # OPCIÓN 1: Archivo local (desarrollo)
         try:
             creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
         except FileNotFoundError:
             pass
         
-        # Si no hay archivo local, usamos secrets de Streamlit Cloud (producción)
+        # OPCIÓN 2: Streamlit Cloud secrets
         if creds is None:
             try:
                 if hasattr(st, 'secrets') and "gcp_service_account" in st.secrets:
@@ -45,8 +46,28 @@ class PadelDB:
             except Exception:
                 pass
         
+        # OPCIÓN 3: Variables de entorno (Railway, Render, etc.)
         if creds is None:
-            st.error("❌ No se encuentra el archivo 'credentials.json' ni la configuración de Secrets.")
+            try:
+                if os.environ.get('GCP_PRIVATE_KEY'):
+                    # Reconstruir el diccionario de credenciales desde variables de entorno
+                    private_key = os.environ.get('GCP_PRIVATE_KEY', '').replace('\\n', '\n')
+                    creds_dict = {
+                        "type": os.environ.get('GCP_TYPE', 'service_account'),
+                        "project_id": os.environ.get('GCP_PROJECT_ID', ''),
+                        "private_key_id": os.environ.get('GCP_PRIVATE_KEY_ID', ''),
+                        "private_key": private_key,
+                        "client_email": os.environ.get('GCP_CLIENT_EMAIL', ''),
+                        "client_id": os.environ.get('GCP_CLIENT_ID', ''),
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                    }
+                    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            except Exception as e:
+                st.error(f"Error con variables de entorno: {e}")
+        
+        if creds is None:
+            st.error("❌ No se encuentra configuración de credenciales. Verifica credentials.json, Secrets, o variables de entorno.")
             st.stop()
             
         client = gspread.authorize(creds)
