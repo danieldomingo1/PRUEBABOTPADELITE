@@ -53,6 +53,10 @@ class PadelDB:
                     # Reconstruir el diccionario de credenciales desde variables de entorno
                     # Manejar robustamente el formato de la clave privada
                     pk = os.environ.get('GCP_PRIVATE_KEY', '')
+                    
+                    # Limpieza agresiva: quitar comillas, espacios extra
+                    pk = pk.strip().strip('"').strip("'")
+                    
                     # Reemplazar diferentes variantes de escape por saltos de línea reales
                     pk = pk.replace('\\n', '\n').replace('\\\\n', '\n')
                     
