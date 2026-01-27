@@ -287,7 +287,7 @@ class PadelDB:
                         'fecha_fmt': fecha,
                         'hora_inicio': ini,
                         'hora_fin': fin,
-                        'titulo': "Partido Sugerido",
+                        'titulo': f"Jornada {count + 1}",
                         'jugadores_names': f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
                     })
                     count += 1
