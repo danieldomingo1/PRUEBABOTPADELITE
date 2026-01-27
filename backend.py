@@ -56,10 +56,24 @@ class PadelDB:
                     # Manejar robustamente el formato de la clave privada
                     pk = os.environ.get('GCP_PRIVATE_KEY', '')
                     
-                    # Limpieza agresiva: quitar comillas, espacios extra
+                    # Log de depuración
+                    print(f"🔑 Clave recibida (primeros 20 chars): {pk[:20]}...")
+
+                    # INTENTO 1: ¿Es Base64?
+                    import base64
+                    try:
+                        # Si no tiene header y parece base64, intentamos decodificar
+                        if "-----BEGIN PRIVATE KEY-----" not in pk:
+                            decoded_bytes = base64.b64decode(pk)
+                            decoded_str = decoded_bytes.decode('utf-8')
+                            if "-----BEGIN PRIVATE KEY-----" in decoded_str:
+                                pk = decoded_str
+                                print("✅ Clave decodificada desde Base64 correctamente")
+                    except Exception as e:
+                        print(f"ℹ️ No es Base64 o falló decodificación: {e}")
+
+                    # INTENTO 2: Limpieza estándar (si no era base64 o falló)
                     pk = pk.strip().strip('"').strip("'")
-                    
-                    # Reemplazar diferentes variantes de escape por saltos de línea reales
                     pk = pk.replace('\\n', '\n').replace('\\\\n', '\n')
                     
                     print(f"🔑 Longitud de la clave procesada: {len(pk)}")
