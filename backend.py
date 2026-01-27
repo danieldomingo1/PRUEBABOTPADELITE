@@ -56,24 +56,31 @@ class PadelDB:
                     # Manejar robustamente el formato de la clave privada
                     pk = os.environ.get('GCP_PRIVATE_KEY', '')
                     
+                    # 1. Limpieza inicial: quitar comillas y espacios (CRÍTICO HAACERLO ANTES DE NADA)
+                    pk = pk.strip().strip('"').strip("'")
+                    
                     # Log de depuración
-                    print(f"🔑 Clave recibida (primeros 20 chars): {pk[:20]}...")
+                    print(f"🔑 Clave tras limpieza inicial (primeros 20 chars): {pk[:20]}...")
 
-                    # INTENTO 1: ¿Es Base64?
+                    # 2. INTENTO: ¿Es Base64?
                     import base64
                     try:
-                        # Si no tiene header y parece base64, intentamos decodificar
+                        # Si no tiene header y parece base64 (caracteres alfanuméricos), intentamos decodificar
                         if "-----BEGIN PRIVATE KEY-----" not in pk:
+                            # Asegurar padding por si acaso
+                            missing_padding = len(pk) % 4
+                            if missing_padding:
+                                pk += '=' * (4 - missing_padding)
+                                
                             decoded_bytes = base64.b64decode(pk)
                             decoded_str = decoded_bytes.decode('utf-8')
                             if "-----BEGIN PRIVATE KEY-----" in decoded_str:
                                 pk = decoded_str
                                 print("✅ Clave decodificada desde Base64 correctamente")
                     except Exception as e:
-                        print(f"ℹ️ No es Base64 o falló decodificación: {e}")
+                        print(f"ℹ️ No se pudo decodificar como Base64 (posiblemente es texto plano): {e}")
 
-                    # INTENTO 2: Limpieza estándar (si no era base64 o falló)
-                    pk = pk.strip().strip('"').strip("'")
+                    # 3. Limpieza final de saltos de línea (para cuando es texto plano o si el base64 tenía escapes)
                     pk = pk.replace('\\n', '\n').replace('\\\\n', '\n')
                     
                     print(f"🔑 Longitud de la clave procesada: {len(pk)}")
