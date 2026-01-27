@@ -5,6 +5,7 @@ from datetime import datetime
 import streamlit as st
 import time
 import os
+import re
 from functools import wraps
 
 # --- DECORADOR DE REINTENTOS ---
@@ -41,6 +42,14 @@ def clean_private_key(pk):
     except Exception:
         pass
     return pk.replace('\\n', '\n').replace('\\\\n', '\n')
+
+# --- HELPER: NORMALIZAR NIVEL ---
+def normalize_nivel(nivel):
+    """Normaliza niveles para comparación (M02 -> M2, etc)."""
+    if not nivel:
+        return ""
+    # Quitar ceros después de letras: M02 -> M2, F01 -> F1
+    return re.sub(r'([A-Z])0+(\d)', r'\1\2', str(nivel).upper())
 
 class PadelDB:
     def __init__(self):
@@ -112,14 +121,30 @@ class PadelDB:
         self._cache_time[key] = now
         return data
 
+    def _invalidate_cache(self, key=None):
+        """Invalida el caché (todo o una clave específica)."""
+        if key:
+            self._cache.pop(key, None)
+            self._cache_time.pop(key, None)
+        else:
+            self._cache.clear()
+            self._cache_time.clear()
+
     def _get_users_map(self):
         """Devuelve un diccionario {ID_USUARIO: NOMBRE}."""
         def fetch():
             try:
                 ws = self.sheet.worksheet("USUARIOS")
                 data = ws.get_all_records()
-                return {str(r['ID_USUARIO']): r['NOMBRE'] for r in data}
-            except:
+                result = {}
+                for r in data:
+                    uid = str(r.get('ID_USUARIO', ''))
+                    nombre = r.get('NOMBRE', uid)  # Fallback al ID si no hay nombre
+                    if uid:
+                        result[uid] = nombre
+                return result
+            except Exception as e:
+                print(f"Error en _get_users_map: {e}")
                 return {}
         return self._get_cached("users_map", fetch)
 
@@ -128,14 +153,12 @@ class PadelDB:
         try:
             ws = self.sheet.worksheet("USUARIOS")
             data = ws.get_all_records()
-            df = pd.DataFrame(data)
-            # Asegurar tipos string para comparación
-            df['ID_USUARIO'] = df['ID_USUARIO'].astype(str)
-            row = df[df['ID_USUARIO'] == str(usuario)]
-            if not row.empty:
-                return row.iloc[0]['NOMBRE'], row.iloc[0]['NIVEL']
+            for row in data:
+                if str(row.get('ID_USUARIO', '')) == str(usuario):
+                    return row.get('NOMBRE'), row.get('NIVEL')
             return None, None
-        except:
+        except Exception as e:
+            print(f"Error en get_info_usuario: {e}")
             return None, None
 
     @retry_on_error()
@@ -143,18 +166,18 @@ class PadelDB:
         try:
             def fetch_users():
                 ws = self.sheet.worksheet("USUARIOS")
-                return pd.DataFrame(ws.get_all_records())
+                return ws.get_all_records()
             
-            df = self._get_cached("usuarios_df", fetch_users)
-            df['ID_USUARIO'] = df['ID_USUARIO'].astype(str)
-            df['PASSWORD'] = df['PASSWORD'].astype(str)
+            data = self._get_cached("usuarios_data", fetch_users)
             
-            user_row = df[(df['ID_USUARIO'] == str(usuario)) & (df['PASSWORD'] == str(password))]
-            
-            if not user_row.empty:
-                return user_row.iloc[0]['NOMBRE'], user_row.iloc[0]['NIVEL']
+            for row in data:
+                uid = str(row.get('ID_USUARIO', ''))
+                pwd = str(row.get('PASSWORD', ''))
+                if uid == str(usuario) and pwd == str(password):
+                    return row.get('NOMBRE'), row.get('NIVEL')
             return None, None
-        except:
+        except Exception as e:
+            print(f"Error en validar_login: {e}")
             return None, None
 
     @retry_on_error()
@@ -164,34 +187,33 @@ class PadelDB:
                 ws = self.sheet.worksheet("DISPONIBILIDAD")
                 return ws.get_all_records()
             
-            data = self._get_cached("todas_horas", fetch) # Cacheamos todo para no leer mil veces
+            data = self._get_cached("todas_horas", fetch)
             
-            user_slots = [d for d in data if str(d['ID_USUARIO']) == str(id_usuario)]
-            
-            clean_data = []
-            for d in user_slots:
-                clean_data.append({
-                    'fecha': d['FECHA'],
-                    'hora_inicio': d['HORA_INICIO'],
-                    'hora_fin': d['HORA_FIN']
-                })
-            return clean_data
-        except:
+            user_slots = []
+            for d in data:
+                if str(d.get('ID_USUARIO', '')) == str(id_usuario):
+                    user_slots.append({
+                        'fecha': d.get('FECHA', ''),
+                        'hora_inicio': d.get('HORA_INICIO', ''),
+                        'hora_fin': d.get('HORA_FIN', '')
+                    })
+            return user_slots
+        except Exception as e:
+            print(f"Error en get_mis_horas: {e}")
             return []
 
     @retry_on_error()
     def guardar_disponibilidad(self, id_usuario, nivel, nuevos_slots):
-        # Leer todo, filtrar localmente y reescribir (Estrategia segura para formato)
         ws = self.sheet.worksheet("DISPONIBILIDAD")
         data = ws.get_all_records()
-        df = pd.DataFrame(data)
         
-        if not df.empty:
-            df = df[df['ID_USUARIO'].astype(str) != str(id_usuario)]
+        # Mantener registros de otros usuarios
+        otros = [d for d in data if str(d.get('ID_USUARIO', '')) != str(id_usuario)]
         
-        new_rows = []
+        # Crear nuevos registros
+        nuevos = []
         for slot in nuevos_slots:
-            new_rows.append({
+            nuevos.append({
                 'ID_USUARIO': id_usuario,
                 'FECHA': slot['fecha'],
                 'HORA_INICIO': slot['hora_inicio'],
@@ -199,55 +221,65 @@ class PadelDB:
                 'NIVEL': nivel
             })
         
-        if new_rows:
-            df_new = pd.DataFrame(new_rows)
-            df_final = pd.concat([df, df_new], ignore_index=True)
-        else:
-            df_final = df
-            
-        if not df_final.empty:
-             df_final = df_final.sort_values('FECHA')
-             
+        # Combinar y ordenar
+        todos = otros + nuevos
+        todos.sort(key=lambda x: x.get('FECHA', ''))
+        
+        # Reescribir hoja
         ws.clear()
-        if not df_final.empty:
-            ws.update([df_final.columns.values.tolist()] + df_final.values.tolist())
-        else:
-            # Restaurar headers si se vacía
-            ws.append_row(['ID_USUARIO', 'FECHA', 'HORA_INICIO', 'HORA_FIN', 'NIVEL'])
+        headers = ['ID_USUARIO', 'FECHA', 'HORA_INICIO', 'HORA_FIN', 'NIVEL']
+        ws.append_row(headers)
+        
+        if todos:
+            rows = [[d.get(h, '') for h in headers] for d in todos]
+            ws.append_rows(rows)
         
         # Invalidar caché
-        del self._cache["todas_horas"]
+        self._invalidate_cache("todas_horas")
         return True
 
     @retry_on_error()
     def get_partidos_posibles(self, nivel):
+        """Encuentra partidos donde 4+ jugadores coinciden en disponibilidad."""
         try:
             ws = self.sheet.worksheet("DISPONIBILIDAD")
             data = ws.get_all_records()
-            df = pd.DataFrame(data)
             
-            if df.empty: return []
+            if not data:
+                return []
             
             hoy = datetime.now().strftime("%Y-%m-%d")
-            df = df[df['FECHA'] >= hoy]
-            if 'NIVEL' in df.columns:
-                df = df[df['NIVEL'].astype(str) == str(nivel)]
-                
-            matches = []
-            grouped = df.groupby(['FECHA', 'HORA_INICIO', 'HORA_FIN'])
+            nivel_normalizado = normalize_nivel(nivel)
             
+            # Filtrar por fecha futura y nivel
+            filtrados = []
+            for d in data:
+                fecha = d.get('FECHA', '')
+                if fecha >= hoy:
+                    nivel_disp = normalize_nivel(d.get('NIVEL', ''))
+                    if nivel_disp == nivel_normalizado:
+                        filtrados.append(d)
+            
+            if not filtrados:
+                return []
+            
+            # Agrupar por fecha/hora
+            grupos = {}
+            for d in filtrados:
+                key = (d.get('FECHA', ''), d.get('HORA_INICIO', ''), d.get('HORA_FIN', ''))
+                if key not in grupos:
+                    grupos[key] = []
+                grupos[key].append(str(d.get('ID_USUARIO', '')))
+            
+            # Buscar grupos con 4+ jugadores
             users_map = self._get_users_map()
-            
+            matches = []
             count = 0
-            for (fecha, ini, fin), group in grouped:
-                uids = group['ID_USUARIO'].unique()
+            
+            for (fecha, ini, fin), uids in grupos.items():
                 if len(uids) >= 4:
                     jugadores = uids[:4]
-                    nombres = [users_map.get(str(u), str(u)) for u in jugadores]
-                    
-                    titulo = f"Jornada (Sugerida)"
-                    # Intentar dar formato A/B vs C/D
-                    nombres_fmt = f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
+                    nombres = [users_map.get(u, u) for u in jugadores]
                     
                     matches.append({
                         'id_partido': f"MATCH_{fecha}_{ini}_{count}",
@@ -255,17 +287,19 @@ class PadelDB:
                         'fecha_fmt': fecha,
                         'hora_inicio': ini,
                         'hora_fin': fin,
-                        'titulo': titulo,
-                        'jugadores_names': nombres_fmt
+                        'titulo': "Partido Sugerido",
+                        'jugadores_names': f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
                     })
                     count += 1
+            
             return matches
         except Exception as e:
-            print(f"Error matching: {e}")
+            print(f"Error en get_partidos_posibles: {e}")
             return []
 
     @retry_on_error()
     def get_mis_partidos(self, nivel):
+        """Obtiene partidos del historial."""
         try:
             ws = self.sheet.worksheet("PARTIDOS")
             data = ws.get_all_records()
@@ -274,51 +308,49 @@ class PadelDB:
             
             processed = []
             for p in data:
-                # Filtrar por nivel si existe columna, sino mostrar todo
-                # if str(p.get('NIVEL')) != str(nivel): continue 
-                
                 # --- FORMATO TÍTULO ---
                 pid = str(p.get('ID_PARTIDO', ''))
                 titulo = pid
-                # Detectar formato "J1-..." -> "Jornada 1"
-                try:
-                    if "J" in pid and "-" in pid:
-                        # J1-P3 -> Jornada 1
-                        j_num = pid.split('-')[0].replace('J', '')
-                        titulo = f"Jornada {j_num}"
-                    elif pid.startswith("M"):
-                        titulo = f"Partido {pid}"
-                except:
-                    pass
+                
+                # Buscar patrón J seguido de número en cualquier parte
+                # Ejemplo: P-M2-J4-01 -> Jornada 4
+                match = re.search(r'J(\d+)', pid)
+                if match:
+                    titulo = f"Jornada {match.group(1)}"
                 
                 p['titulo_fmt'] = titulo
                 
                 # --- FORMATO JUGADORES ---
-                # Asumiendo columnas JUGADOR1, JUGADOR2, etc que contienen IDs
                 ids = [
-                    str(p.get('JUGADOR1', '')),
-                    str(p.get('JUGADOR2', '')),
-                    str(p.get('JUGADOR3', '')),
-                    str(p.get('JUGADOR4', ''))
+                    str(p.get('JUGADOR_1', '') or ''),
+                    str(p.get('JUGADOR_2', '') or ''),
+                    str(p.get('JUGADOR_3', '') or ''),
+                    str(p.get('JUGADOR_4', '') or '')
                 ]
                 
-                # Resolver nombres
-                names = [users_map.get(uid, uid) if uid else "?" for uid in ids]
+                # Resolver nombres con fallback al ID
+                nombres = []
+                for uid in ids:
+                    if uid:
+                        nombre = users_map.get(uid, uid)
+                        nombres.append(nombre)
+                    else:
+                        nombres.append("...")
                 
-                # Formato: "Juan/Pepe vs Ana/Maria"
-                if all(ids):
-                    p['nombres_str'] = f"{names[0]}/{names[1]} vs {names[2]}/{names[3]}"
+                # Formato final
+                if any(uid for uid in ids):
+                    p['nombres_str'] = f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
                 else:
-                    p['nombres_str'] = "Jugadores sin asignar"
+                    p['nombres_str'] = "Jugadores por asignar"
                 
                 processed.append(p)
-                
+            
             return processed
         except Exception as e:
-            print(f"Error getting matches: {e}")
+            print(f"Error en get_mis_partidos: {e}")
             return []
 
     @retry_on_error()
     def programar_partido(self, id_partido, fecha, hora_range):
-        # Dummy save
+        # TODO: Implementar guardado de partido confirmado
         pass
