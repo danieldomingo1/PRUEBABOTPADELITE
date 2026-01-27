@@ -51,12 +51,16 @@ class PadelDB:
             try:
                 if os.environ.get('GCP_PRIVATE_KEY'):
                     # Reconstruir el diccionario de credenciales desde variables de entorno
-                    private_key = os.environ.get('GCP_PRIVATE_KEY', '').replace('\\n', '\n')
+                    # Manejar robustamente el formato de la clave privada
+                    pk = os.environ.get('GCP_PRIVATE_KEY', '')
+                    # Reemplazar diferentes variantes de escape por saltos de línea reales
+                    pk = pk.replace('\\n', '\n').replace('\\\\n', '\n')
+                    
                     creds_dict = {
                         "type": os.environ.get('GCP_TYPE', 'service_account'),
                         "project_id": os.environ.get('GCP_PROJECT_ID', ''),
                         "private_key_id": os.environ.get('GCP_PRIVATE_KEY_ID', ''),
-                        "private_key": private_key,
+                        "private_key": pk,
                         "client_email": os.environ.get('GCP_CLIENT_EMAIL', ''),
                         "client_id": os.environ.get('GCP_CLIENT_ID', ''),
                         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
