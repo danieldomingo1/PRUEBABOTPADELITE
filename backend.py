@@ -37,14 +37,58 @@ class PadelDB:
         except FileNotFoundError:
             pass
         
+# --- HELPER: LIMPIEZA DE CLAVE PRIVADA ---
+def clean_private_key(pk):
+    """Limpia y corrige formato de clave privada (nativa, env var o base64)."""
+    if not pk: return ""
+    
+    # 1. Limpieza inicial
+    pk = pk.strip().strip('"').strip("'")
+    
+    # 2. Intento Base64
+    import base64
+    try:
+        if "-----BEGIN PRIVATE KEY-----" not in pk:
+            # Padding
+            missing_padding = len(pk) % 4
+            if missing_padding:
+                pk += '=' * (4 - missing_padding)
+            decoded_bytes = base64.b64decode(pk)
+            decoded_str = decoded_bytes.decode('utf-8')
+            if "-----BEGIN PRIVATE KEY-----" in decoded_str:
+                return decoded_str
+    except Exception:
+        pass
+
+    # 3. Limpieza de saltos de línea (si no era base64)
+    return pk.replace('\\n', '\n').replace('\\\\n', '\n')
+
+class PadelDB:
+    def __init__(self):
+        scope = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
+        creds = None
+        
+        # OPCIÓN 1: Archivo local (desarrollo)
+        try:
+            creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        except FileNotFoundError:
+            pass
+        
         # OPCIÓN 2: Streamlit Cloud secrets
         if creds is None:
             try:
                 if hasattr(st, 'secrets') and "gcp_service_account" in st.secrets:
+                    print("🔍 Usando Secrets de Streamlit Cloud...")
                     creds_dict = dict(st.secrets["gcp_service_account"])
+                    
+                    # APLICAR LIMPIEZA TAMBIÉN AQUÍ
+                    if "private_key" in creds_dict:
+                        raw_key = creds_dict["private_key"]
+                        creds_dict["private_key"] = clean_private_key(raw_key)
+                        
                     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ Error leyendo secrets: {e}")
         
         # OPCIÓN 3: Variables de entorno (Railway, Render, etc.)
         if creds is None:
@@ -52,48 +96,14 @@ class PadelDB:
             try:
                 if os.environ.get('GCP_PRIVATE_KEY'):
                     print("✅ Variable GCP_PRIVATE_KEY encontrada")
-                    # Reconstruir el diccionario de credenciales desde variables de entorno
-                    # Manejar robustamente el formato de la clave privada
                     pk = os.environ.get('GCP_PRIVATE_KEY', '')
-                    
-                    # 1. Limpieza inicial: quitar comillas y espacios (CRÍTICO HAACERLO ANTES DE NADA)
-                    pk = pk.strip().strip('"').strip("'")
-                    
-                    # Log de depuración
-                    print(f"🔑 Clave tras limpieza inicial (primeros 20 chars): {pk[:20]}...")
-
-                    # 2. INTENTO: ¿Es Base64?
-                    import base64
-                    try:
-                        # Si no tiene header y parece base64 (caracteres alfanuméricos), intentamos decodificar
-                        if "-----BEGIN PRIVATE KEY-----" not in pk:
-                            # Asegurar padding por si acaso
-                            missing_padding = len(pk) % 4
-                            if missing_padding:
-                                pk += '=' * (4 - missing_padding)
-                                
-                            decoded_bytes = base64.b64decode(pk)
-                            decoded_str = decoded_bytes.decode('utf-8')
-                            if "-----BEGIN PRIVATE KEY-----" in decoded_str:
-                                pk = decoded_str
-                                print("✅ Clave decodificada desde Base64 correctamente")
-                    except Exception as e:
-                        print(f"ℹ️ No se pudo decodificar como Base64 (posiblemente es texto plano): {e}")
-
-                    # 3. Limpieza final de saltos de línea (para cuando es texto plano o si el base64 tenía escapes)
-                    pk = pk.replace('\\n', '\n').replace('\\\\n', '\n')
-                    
-                    print(f"🔑 Longitud de la clave procesada: {len(pk)}")
-                    if "-----BEGIN PRIVATE KEY-----" in pk:
-                        print("✅ Header de clave privada encontrado")
-                    else:
-                        print("⚠️ Header de clave privada NO encontrado en la variable procesada")
+                    cleaned_key = clean_private_key(pk)
                     
                     creds_dict = {
                         "type": os.environ.get('GCP_TYPE', 'service_account'),
                         "project_id": os.environ.get('GCP_PROJECT_ID', ''),
                         "private_key_id": os.environ.get('GCP_PRIVATE_KEY_ID', ''),
-                        "private_key": pk,
+                        "private_key": cleaned_key,
                         "client_email": os.environ.get('GCP_CLIENT_EMAIL', ''),
                         "client_id": os.environ.get('GCP_CLIENT_ID', ''),
                         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
