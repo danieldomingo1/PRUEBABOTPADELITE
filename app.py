@@ -1073,21 +1073,20 @@ def main_app():
     
     btn_text = "▼ Ver historial de partidos" if not st.session_state.mostrar_historial else "▲ Ocultar historial"
     
-    # CSS para resetear y aplicar gris clarito al botón de historial
+    # Usar contenedor con clase única para el botón gris
     st.markdown("""
         <style>
-        /* Reset para este botón específico */
-        div[data-testid="stButton"]:last-of-type > button {
+        .historial-btn-container + div button {
             background-color: #e2e8f0 !important;
             background: #e2e8f0 !important;
             color: #64748b !important;
             border: 1px solid #cbd5e1 !important;
         }
-        div[data-testid="stButton"]:last-of-type > button:hover {
+        .historial-btn-container + div button:hover {
             background-color: #cbd5e1 !important;
-            background: #cbd5e1 !important;
         }
         </style>
+        <div class="historial-btn-container"></div>
     """, unsafe_allow_html=True)
     
     if st.button(btn_text, key="toggle_historial", use_container_width=True):
