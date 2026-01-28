@@ -586,6 +586,131 @@ def popup_confirmar_partido(partido):
             time.sleep(1)
             st.rerun()
 
+# --- POPUP DE EDITAR PARTIDO PROGRAMADO ---
+@st.dialog("Editar partido", width="small")
+def popup_editar_partido(partido):
+    """Popup para editar horario o cancelar un partido programado."""
+    
+    # Separar jugadores para mostrar en 4 líneas
+    nombres_str = partido.get('nombres_str', '')
+    try:
+        eq1, eq2 = nombres_str.split(" vs ")
+        j1, j2 = eq1.split("/")
+        j3, j4 = eq2.split("/")
+    except:
+        j1, j2, j3, j4 = nombres_str, "", "", ""
+    
+    st.markdown(f"""
+        <div style='text-align: center; margin-bottom: 1rem;'>
+            <h3 style='margin: 0 0 0.75rem; color: var(--primary);'>{partido.get('titulo', '')}</h3>
+            <p style='margin: 0; font-size: 0.85rem;'>{j1}</p>
+            <p style='margin: 0; font-size: 0.85rem;'>{j2}</p>
+            <p style='margin: 0.25rem 0; font-size: 0.7rem; color: var(--text-muted); font-weight: 600;'>vs</p>
+            <p style='margin: 0; font-size: 0.85rem;'>{j3}</p>
+            <p style='margin: 0; font-size: 0.85rem;'>{j4}</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown(f"""
+        <div style='background: #f1f5f9; padding: 0.5rem; border-radius: 8px; margin-bottom: 1rem; text-align: center;'>
+            <p style='margin: 0; font-size: 0.8rem; color: #64748b;'>Programado: {partido.get('fecha', '')} a las {partido.get('hora', '')}</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Estado del popup
+    if 'modo_edicion' not in st.session_state:
+        st.session_state.modo_edicion = None
+    
+    # Vista inicial: 2 botones
+    if st.session_state.modo_edicion is None:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📅 Editar horario", use_container_width=True):
+                st.session_state.modo_edicion = 'horario'
+                st.rerun()
+        with col2:
+            if st.button("❌ Cancelar partido", use_container_width=True, type="secondary"):
+                st.session_state.modo_edicion = 'cancelar'
+                st.rerun()
+        
+        st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+        if st.button("Cerrar", use_container_width=True):
+            st.session_state.partido_editar = None
+            st.session_state.modo_edicion = None
+            st.rerun()
+    
+    # Vista de editar horario
+    elif st.session_state.modo_edicion == 'horario':
+        st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Selecciona nueva fecha:</p>", unsafe_allow_html=True)
+        
+        # Generar próximas 2 semanas
+        from datetime import datetime, timedelta
+        hoy = datetime.now()
+        fechas = []
+        dias_es = {0: "Lun", 1: "Mar", 2: "Mié", 3: "Jue", 4: "Vie", 5: "Sáb", 6: "Dom"}
+        
+        for i in range(14):
+            d = hoy + timedelta(days=i+1)
+            fechas.append({
+                'fecha': d.strftime('%Y-%m-%d'),
+                'label': f"{dias_es[d.weekday()]} {d.day}/{d.month}"
+            })
+        
+        fecha_labels = [f['label'] for f in fechas]
+        fecha_idx = st.selectbox("Fecha", fecha_labels, label_visibility="collapsed")
+        fecha_nueva = fechas[fecha_labels.index(fecha_idx)]['fecha']
+        
+        st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Hora de inicio:</p>", unsafe_allow_html=True)
+        horas = ["16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00"]
+        hora_nueva = st.select_slider("Hora", options=horas, value="20:00", label_visibility="collapsed")
+        
+        st.markdown(f"""
+            <div style='background: #f0fdf4; padding: 0.75rem; border-radius: 8px; margin: 1rem 0; border-left: 3px solid #10b981;'>
+                <p style='margin: 0; font-size: 0.85rem;'>
+                    <strong>Nuevo horario:</strong> {fecha_idx} a las {hora_nueva}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← Volver", use_container_width=True):
+                st.session_state.modo_edicion = None
+                st.rerun()
+        with col2:
+            if st.button("✓ Guardar", type="primary", use_container_width=True):
+                st.session_state.db.editar_partido(partido['id_partido'], fecha_nueva, hora_nueva)
+                st.session_state.partido_editar = None
+                st.session_state.modo_edicion = None
+                st.session_state.needs_match_refresh = True
+                st.success("¡Horario actualizado!")
+                time.sleep(1)
+                st.rerun()
+    
+    # Vista de cancelar
+    elif st.session_state.modo_edicion == 'cancelar':
+        st.markdown("""
+            <div style='background: #fef2f2; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; text-align: center; border-left: 3px solid #dc2626;'>
+                <p style='margin: 0; font-weight: 600; color: #dc2626;'>¿Seguro que quieres cancelar este partido?</p>
+                <p style='margin: 0.5rem 0 0; font-size: 0.8rem; color: #64748b;'>El partido volverá a estado PENDIENTE</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← Volver", use_container_width=True):
+                st.session_state.modo_edicion = None
+                st.rerun()
+        with col2:
+            if st.button("Sí, cancelar", type="primary", use_container_width=True):
+                st.session_state.db.cancelar_partido(partido['id_partido'])
+                st.session_state.partido_editar = None
+                st.session_state.modo_edicion = None
+                st.session_state.needs_match_refresh = True
+                st.success("Partido cancelado")
+                time.sleep(1)
+                st.rerun()
+
 # --- INICIALIZACIÓN ---
 if 'db' not in st.session_state:
     try: 
@@ -772,11 +897,14 @@ def main_app():
         st.markdown("<p style='color: #64748b; font-size: 0.8rem; margin-bottom: 1rem;'>Partidos donde coincides en disponibilidad con tus compañeros</p>", unsafe_allow_html=True)
         
         for m in matches:
-            # Separar parejas
+            # Separar jugadores en 4 líneas
+            nombres_str = m.get('nombres_str', '')
             try:
-                eq1, eq2 = m['nombres_str'].split(" vs ")
+                eq1, eq2 = nombres_str.split(" vs ")
+                j1, j2 = eq1.split("/")
+                j3, j4 = eq2.split("/")
             except:
-                eq1, eq2 = m['nombres_str'], ""
+                j1, j2, j3, j4 = nombres_str, "", "", ""
             
             # Obtener resumen de coincidencias
             coincidencias = m.get('coincidencias', [])
@@ -790,7 +918,7 @@ def main_app():
             else:
                 fecha_display = f"{fecha_display} · {primera.get('hora_inicio', '')} - {primera.get('hora_fin', '')}"
             
-            # Card con info del partido
+            # Card con info del partido - jugadores en 4 líneas
             card_html = f"""
                 <div style='background: linear-gradient(135deg, #e3f2fd 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #1E88E5;'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
@@ -798,34 +926,26 @@ def main_app():
                         <span style='background: #1E88E5; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>DISPONIBLE</span>
                     </div>
                     <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{fecha_display}</p>
-                    <div style='font-size: 0.85rem; margin-bottom: 0.75rem;'>
-                        <p style='margin: 0; font-weight: 500;'>{eq1}</p>
-                        <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
-                        <p style='margin: 0; font-weight: 500;'>{eq2}</p>
+                    <div style='font-size: 0.85rem; margin-bottom: 0.75rem; text-align: center;'>
+                        <p style='margin: 0;'>{j1}</p>
+                        <p style='margin: 0;'>{j2}</p>
+                        <p style='margin: 0.25rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
+                        <p style='margin: 0;'>{j3}</p>
+                        <p style='margin: 0;'>{j4}</p>
                     </div>
                 </div>
             """
             st.markdown(card_html, unsafe_allow_html=True)
             
-            # CSS para botón azul
-            st.markdown("""
-                <style>
-                button[key^="btn_confirmar_"] {
-                    background-color: #1E88E5 !important;
-                    color: white !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
             # Botón que abre el popup - con CSS para forzar azul
             st.markdown("""
                 <style>
-                div[data-testid="stButton"] > button {
+                div[data-testid="stButton"] > button[kind="primary"] {
                     background-color: #1E88E5 !important;
                     color: white !important;
                     border: none !important;
                 }
-                div[data-testid="stButton"] > button:hover {
+                div[data-testid="stButton"] > button[kind="primary"]:hover {
                     background-color: #1565C0 !important;
                 }
                 </style>
@@ -845,13 +965,15 @@ def main_app():
         
         for p in programados:
             titulo = p.get('titulo', p.get('id_partido', ''))
-            nombres = p.get('nombres_str', "")
+            nombres_str = p.get('nombres_str', "")
             
-            # Separar parejas para mostrar en 3 líneas
+            # Separar jugadores en 4 líneas
             try:
-                eq1, eq2 = nombres.split(" vs ")
+                eq1, eq2 = nombres_str.split(" vs ")
+                j1, j2 = eq1.split("/")
+                j3, j4 = eq2.split("/")
             except:
-                eq1, eq2 = nombres, ""
+                j1, j2, j3, j4 = nombres_str, "", "", ""
             
             card_html = f"""
                 <div style='background: linear-gradient(135deg, #f7f8cc 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #D4D700;'>
@@ -860,14 +982,26 @@ def main_app():
                         <span style='background: #D4D700; color: #1a1a1a; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>PROGRAMADO</span>
                     </div>
                     <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{p.get('fecha', '')} · {p.get('hora', '')}</p>
-                    <div style='font-size: 0.85rem;'>
-                        <p style='margin: 0; font-weight: 500;'>{eq1}</p>
-                        <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
-                        <p style='margin: 0; font-weight: 500;'>{eq2}</p>
+                    <div style='font-size: 0.85rem; text-align: center;'>
+                        <p style='margin: 0;'>{j1}</p>
+                        <p style='margin: 0;'>{j2}</p>
+                        <p style='margin: 0.25rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
+                        <p style='margin: 0;'>{j3}</p>
+                        <p style='margin: 0;'>{j4}</p>
                     </div>
                 </div>
             """
             st.markdown(card_html, unsafe_allow_html=True)
+            
+            # Botón Editar
+            if st.button("Editar", key=f"btn_editar_{p['id_partido']}", use_container_width=True):
+                st.session_state.partido_editar = p
+                st.session_state.modo_edicion = None
+                st.rerun()
+    
+    # Mostrar popup de editar si hay partido a editar
+    if st.session_state.get('partido_editar'):
+        popup_editar_partido(st.session_state.partido_editar)
     
     # Historial de Partidos Jugados - Con botón para expandir
     st.markdown("<h3 style='margin-top: 1.5rem;'>Historial de partidos</h3>", unsafe_allow_html=True)
@@ -894,13 +1028,15 @@ def main_app():
         if jugados:
             for p in jugados:
                 titulo = p.get('titulo', p.get('id_partido', ''))
-                nombres = p.get('nombres_str', "")
+                nombres_str = p.get('nombres_str', "")
                 
-                # Separar parejas
+                # Separar jugadores en 4 líneas
                 try:
-                    eq1, eq2 = nombres.split(" vs ")
+                    eq1, eq2 = nombres_str.split(" vs ")
+                    j1, j2 = eq1.split("/")
+                    j3, j4 = eq2.split("/")
                 except:
-                    eq1, eq2 = nombres, ""
+                    j1, j2, j3, j4 = nombres_str, "", "", ""
                 
                 card_html = f"""
                     <div style='background: linear-gradient(135deg, #e2e8ed 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #94a3b8;'>
@@ -909,10 +1045,12 @@ def main_app():
                             <span style='background: #94a3b8; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>JUGADO</span>
                         </div>
                         <p style='font-size: 0.7rem; color: #64748b; margin: 0 0 0.5rem;'>{p.get('fecha', '')}</p>
-                        <div style='font-size: 0.8rem;'>
-                            <p style='margin: 0;'>{eq1}</p>
+                        <div style='font-size: 0.8rem; text-align: center;'>
+                            <p style='margin: 0;'>{j1}</p>
+                            <p style='margin: 0;'>{j2}</p>
                             <p style='margin: 0.1rem 0; font-size: 0.65rem; color: #94a3b8; font-weight: 600;'>vs</p>
-                            <p style='margin: 0;'>{eq2}</p>
+                            <p style='margin: 0;'>{j3}</p>
+                            <p style='margin: 0;'>{j4}</p>
                         </div>
                     </div>
                 """

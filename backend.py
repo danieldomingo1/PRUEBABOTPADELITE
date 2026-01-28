@@ -471,3 +471,42 @@ class PadelDB:
         except Exception as e:
             print(f"Error en confirmar_partido: {e}")
             return False
+
+    @retry_on_error()
+    def editar_partido(self, id_partido, fecha, hora):
+        """Actualiza fecha y hora de un partido PROGRAMADO."""
+        try:
+            ws = self.sheet.worksheet("PARTIDOS")
+            data = ws.get_all_records()
+            
+            for i, p in enumerate(data):
+                if str(p.get('ID_PARTIDO', '')) == str(id_partido):
+                    row = i + 2
+                    # Columnas: FECHA=8, HORA=9
+                    ws.update_cell(row, 8, fecha)
+                    ws.update_cell(row, 9, hora)
+                    return True
+            return False
+        except Exception as e:
+            print(f"Error en editar_partido: {e}")
+            return False
+
+    @retry_on_error()
+    def cancelar_partido(self, id_partido):
+        """Cancela un partido PROGRAMADO (vuelve a PENDIENTE)."""
+        try:
+            ws = self.sheet.worksheet("PARTIDOS")
+            data = ws.get_all_records()
+            
+            for i, p in enumerate(data):
+                if str(p.get('ID_PARTIDO', '')) == str(id_partido):
+                    row = i + 2
+                    # Limpiar fecha y hora, estado a PENDIENTE
+                    ws.update_cell(row, 8, '')  # FECHA
+                    ws.update_cell(row, 9, '')  # HORA
+                    ws.update_cell(row, 11, 'PENDIENTE')  # ESTADO
+                    return True
+            return False
+        except Exception as e:
+            print(f"Error en cancelar_partido: {e}")
+            return False
