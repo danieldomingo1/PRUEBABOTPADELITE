@@ -457,19 +457,23 @@ def popup_confirmar_partido(partido):
         st.error("No hay fechas disponibles")
         return
     
-    # Separar parejas para mostrar en 3 líneas
+    # Separar jugadores en 4 líneas (igual que las tarjetas)
     nombres_str = partido.get('nombres_str', '')
     try:
         eq1, eq2 = nombres_str.split(" vs ")
+        j1, j2 = eq1.split("/")
+        j3, j4 = eq2.split("/")
     except:
-        eq1, eq2 = nombres_str, ""
+        j1, j2, j3, j4 = nombres_str, "", "", ""
     
     st.markdown(f"""
         <div style='text-align: center; margin-bottom: 1rem;'>
             <h3 style='margin: 0 0 0.75rem; color: var(--primary);'>{partido['titulo']}</h3>
-            <p style='margin: 0; font-weight: 500; font-size: 0.9rem;'>{eq1}</p>
+            <p style='margin: 0; font-size: 0.9rem;'>{j1}</p>
+            <p style='margin: 0; font-size: 0.9rem;'>{j2}</p>
             <p style='margin: 0.25rem 0; font-size: 0.75rem; color: var(--text-muted); font-weight: 600;'>vs</p>
-            <p style='margin: 0; font-weight: 500; font-size: 0.9rem;'>{eq2}</p>
+            <p style='margin: 0; font-size: 0.9rem;'>{j3}</p>
+            <p style='margin: 0; font-size: 0.9rem;'>{j4}</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -623,13 +627,29 @@ def popup_editar_partido(partido):
     
     # Vista inicial: 2 botones
     if st.session_state.modo_edicion is None:
+        # CSS para botones amarillo y rojo
+        st.markdown("""
+            <style>
+            [data-testid="stDialog"] [data-testid="column"]:first-child button {
+                background-color: #D4D700 !important;
+                color: #1a1a1a !important;
+                border: none !important;
+            }
+            [data-testid="stDialog"] [data-testid="column"]:last-child button {
+                background-color: #dc2626 !important;
+                color: white !important;
+                border: none !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📅 Editar horario", use_container_width=True):
+            if st.button("Editar horario", use_container_width=True):
                 st.session_state.modo_edicion = 'horario'
                 st.rerun()
         with col2:
-            if st.button("❌ Cancelar partido", use_container_width=True, type="secondary"):
+            if st.button("Cancelar partido", use_container_width=True):
                 st.session_state.modo_edicion = 'cancelar'
                 st.rerun()
         
@@ -993,25 +1013,40 @@ def main_app():
             """
             st.markdown(card_html, unsafe_allow_html=True)
             
-            # CSS para botón amarillo
-            st.markdown("""
+            # CSS específico para botón Editar amarillo (usando key)
+            partido_key = p['id_partido']
+            st.markdown(f"""
                 <style>
-                div[data-testid="stButton"] > button {
+                button[kind="secondary"][data-testid="stButton"],
+                div[data-testid="stButton"]:has(button[key*="editar"]) > button,
+                button.st-emotion-cache-1vt4y43 {{
                     background-color: #D4D700 !important;
                     color: #1a1a1a !important;
                     border: none !important;
-                }
-                div[data-testid="stButton"] > button:hover {
-                    background-color: #b8ba00 !important;
-                }
+                }}
                 </style>
             """, unsafe_allow_html=True)
             
-            # Botón Editar
-            if st.button("Editar", key=f"btn_editar_{p['id_partido']}", use_container_width=True):
+            # Botón Editar con type secondary para diferenciarlo
+            if st.button("Editar", key=f"btn_editar_{p['id_partido']}", type="secondary", use_container_width=True):
                 st.session_state.partido_editar = p
                 st.session_state.modo_edicion = None
                 st.rerun()
+            
+            # CSS forzado para secondary buttons en esta sección
+            st.markdown("""
+                <style>
+                button[kind="secondary"] {
+                    background-color: #D4D700 !important;
+                    color: #1a1a1a !important;
+                    border: 1px solid #D4D700 !important;
+                }
+                button[kind="secondary"]:hover {
+                    background-color: #b8ba00 !important;
+                    border-color: #b8ba00 !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
     
     # Mostrar popup de editar si hay partido a editar
     if st.session_state.get('partido_editar'):
