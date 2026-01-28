@@ -657,7 +657,7 @@ def popup_editar_partido(partido):
             })
         
         fecha_labels = [f['label'] for f in fechas]
-        fecha_idx = st.selectbox("Fecha", fecha_labels, label_visibility="collapsed")
+        fecha_idx = st.radio("Fecha", fecha_labels, label_visibility="collapsed", horizontal=False)
         fecha_nueva = fechas[fecha_labels.index(fecha_idx)]['fecha']
         
         st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Hora de inicio:</p>", unsafe_allow_html=True)
@@ -992,6 +992,20 @@ def main_app():
                 </div>
             """
             st.markdown(card_html, unsafe_allow_html=True)
+            
+            # CSS para botón amarillo
+            st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button {
+                    background-color: #D4D700 !important;
+                    color: #1a1a1a !important;
+                    border: none !important;
+                }
+                div[data-testid="stButton"] > button:hover {
+                    background-color: #b8ba00 !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
             
             # Botón Editar
             if st.button("Editar", key=f"btn_editar_{p['id_partido']}", use_container_width=True):
