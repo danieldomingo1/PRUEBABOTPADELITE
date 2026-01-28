@@ -663,22 +663,51 @@ def popup_editar_partido(partido):
     elif st.session_state.modo_edicion == 'horario':
         st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Selecciona nueva fecha:</p>", unsafe_allow_html=True)
         
-        # Generar próximas 2 semanas
+        # Generar próximas 2 semanas divididas por semana
         from datetime import datetime, timedelta
         hoy = datetime.now()
-        fechas = []
         dias_es = {0: "Lun", 1: "Mar", 2: "Mié", 3: "Jue", 4: "Vie", 5: "Sáb", 6: "Dom"}
+        
+        # Separar días por semana
+        semana1 = []
+        semana2 = []
         
         for i in range(14):
             d = hoy + timedelta(days=i+1)
-            fechas.append({
+            dia_info = {
                 'fecha': d.strftime('%Y-%m-%d'),
                 'label': f"{dias_es[d.weekday()]} {d.day}/{d.month}"
-            })
+            }
+            if i < 7:
+                semana1.append(dia_info)
+            else:
+                semana2.append(dia_info)
         
-        fecha_labels = [f['label'] for f in fechas]
-        fecha_idx = st.radio("Fecha", fecha_labels, label_visibility="collapsed", horizontal=False)
-        fecha_nueva = fechas[fecha_labels.index(fecha_idx)]['fecha']
+        # Mostrar en 2 columnas
+        col1, col2 = st.columns(2)
+        
+        # Inicializar fecha seleccionada
+        if 'fecha_edit_seleccionada' not in st.session_state:
+            st.session_state.fecha_edit_seleccionada = semana1[0]['fecha']
+        
+        with col1:
+            st.markdown("<p style='font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem;'>Esta semana</p>", unsafe_allow_html=True)
+            for dia in semana1:
+                if st.button(dia['label'], key=f"sem1_{dia['fecha']}", use_container_width=True):
+                    st.session_state.fecha_edit_seleccionada = dia['fecha']
+                    st.rerun()
+        
+        with col2:
+            st.markdown("<p style='font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem;'>Próxima semana</p>", unsafe_allow_html=True)
+            for dia in semana2:
+                if st.button(dia['label'], key=f"sem2_{dia['fecha']}", use_container_width=True):
+                    st.session_state.fecha_edit_seleccionada = dia['fecha']
+                    st.rerun()
+        
+        fecha_nueva = st.session_state.fecha_edit_seleccionada
+        # Obtener label de la fecha seleccionada
+        todas_fechas = semana1 + semana2
+        fecha_label = next((f['label'] for f in todas_fechas if f['fecha'] == fecha_nueva), "")
         
         st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Hora de inicio:</p>", unsafe_allow_html=True)
         horas = ["16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00"]
@@ -687,7 +716,7 @@ def popup_editar_partido(partido):
         st.markdown(f"""
             <div style='background: #f0fdf4; padding: 0.75rem; border-radius: 8px; margin: 1rem 0; border-left: 3px solid #10b981;'>
                 <p style='margin: 0; font-size: 0.85rem;'>
-                    <strong>Nuevo horario:</strong> {fecha_idx} a las {hora_nueva}
+                    <strong>Nuevo horario:</strong> {fecha_label} a las {hora_nueva}
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -1013,40 +1042,24 @@ def main_app():
             """
             st.markdown(card_html, unsafe_allow_html=True)
             
-            # CSS específico para botón Editar amarillo (usando key)
-            partido_key = p['id_partido']
-            st.markdown(f"""
+            # Botón Editar AZUL (igual que Confirmar partido)
+            st.markdown("""
                 <style>
-                button[kind="secondary"][data-testid="stButton"],
-                div[data-testid="stButton"]:has(button[key*="editar"]) > button,
-                button.st-emotion-cache-1vt4y43 {{
-                    background-color: #D4D700 !important;
-                    color: #1a1a1a !important;
+                div[data-testid="stButton"] > button[kind="primary"] {
+                    background-color: #1E88E5 !important;
+                    color: white !important;
                     border: none !important;
-                }}
+                }
+                div[data-testid="stButton"] > button[kind="primary"]:hover {
+                    background-color: #1565C0 !important;
+                }
                 </style>
             """, unsafe_allow_html=True)
             
-            # Botón Editar con type secondary para diferenciarlo
-            if st.button("Editar", key=f"btn_editar_{p['id_partido']}", type="secondary", use_container_width=True):
+            if st.button("Editar", key=f"btn_editar_{p['id_partido']}", type="primary", use_container_width=True):
                 st.session_state.partido_editar = p
                 st.session_state.modo_edicion = None
                 st.rerun()
-            
-            # CSS forzado para secondary buttons en esta sección
-            st.markdown("""
-                <style>
-                button[kind="secondary"] {
-                    background-color: #D4D700 !important;
-                    color: #1a1a1a !important;
-                    border: 1px solid #D4D700 !important;
-                }
-                button[kind="secondary"]:hover {
-                    background-color: #b8ba00 !important;
-                    border-color: #b8ba00 !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
     
     # Mostrar popup de editar si hay partido a editar
     if st.session_state.get('partido_editar'):
@@ -1059,13 +1072,21 @@ def main_app():
         st.session_state.mostrar_historial = False
     
     btn_text = "▼ Ver historial de partidos" if not st.session_state.mostrar_historial else "▲ Ocultar historial"
-    st.markdown(f"""
+    
+    # CSS para resetear y aplicar gris clarito al botón de historial
+    st.markdown("""
         <style>
-        div[data-testid="stButton"][key="toggle_historial"] button {{
-            background: linear-gradient(135deg, #f1f5f9 0%, #fff 100%) !important;
-            border: 1px solid #e2e8f0 !important;
+        /* Reset para este botón específico */
+        div[data-testid="stButton"]:last-of-type > button {
+            background-color: #e2e8f0 !important;
+            background: #e2e8f0 !important;
             color: #64748b !important;
-        }}
+            border: 1px solid #cbd5e1 !important;
+        }
+        div[data-testid="stButton"]:last-of-type > button:hover {
+            background-color: #cbd5e1 !important;
+            background: #cbd5e1 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
     
