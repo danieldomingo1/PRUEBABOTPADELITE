@@ -444,6 +444,139 @@ def crear_registro_disponibilidad(fecha_str, hora_inicio_str, hora_fin_str):
         'hora_fin': hora_fin_str
     }
 
+# --- POPUP DE CONFIRMAR PARTIDO ---
+@st.dialog("Confirmar partido", width="small")
+def popup_confirmar_partido(partido):
+    """
+    Popup para seleccionar día y hora del partido.
+    partido: dict con 'id_partido', 'titulo', 'nombres_str', 'coincidencias'
+    """
+    coincidencias = partido.get('coincidencias', [])
+    
+    if not coincidencias:
+        st.error("No hay fechas disponibles")
+        return
+    
+    st.markdown(f"""
+        <div style='text-align: center; margin-bottom: 1rem;'>
+            <h3 style='margin: 0; color: var(--primary);'>{partido['titulo']}</h3>
+            <p style='color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0;'>{partido['nombres_str']}</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Diccionario para mapear fecha a opciones de hora
+    dias_es = {0: "Lun", 1: "Mar", 2: "Mié", 3: "Jue", 4: "Vie", 5: "Sáb", 6: "Dom"}
+    
+    # Formatear fechas para mostrar
+    opciones_fecha = []
+    for c in coincidencias:
+        from datetime import datetime
+        fecha_dt = datetime.strptime(c['fecha'], '%Y-%m-%d')
+        dia_semana = dias_es[fecha_dt.weekday()]
+        fecha_fmt = f"{dia_semana} {fecha_dt.day}/{fecha_dt.month}"
+        opciones_fecha.append({
+            'fecha': c['fecha'],
+            'fecha_fmt': fecha_fmt,
+            'hora_inicio': c['hora_inicio'],
+            'hora_fin': c['hora_fin']
+        })
+    
+    # Selección de día
+    if len(opciones_fecha) == 1:
+        # Solo un día - mostrarlo directamente
+        fecha_seleccionada = opciones_fecha[0]
+        st.markdown(f"""
+            <div style='background: #e3f2fd; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; text-align: center;'>
+                <p style='margin: 0; font-weight: 600;'>📅 {fecha_seleccionada['fecha_fmt']}</p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Múltiples días - radio buttons
+        st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>📅 Selecciona el día:</p>", unsafe_allow_html=True)
+        labels = [o['fecha_fmt'] for o in opciones_fecha]
+        idx = st.radio("Día", labels, label_visibility="collapsed", horizontal=True)
+        fecha_seleccionada = opciones_fecha[labels.index(idx)]
+    
+    # Generar opciones de hora (cada 30 min dentro del rango)
+    def generar_horas(inicio, fin):
+        horas = []
+        h_ini, m_ini = map(int, inicio.split(':'))
+        h_fin, m_fin = map(int, fin.split(':'))
+        min_ini = h_ini * 60 + m_ini
+        min_fin = h_fin * 60 + m_fin
+        
+        # Cada 30 minutos
+        current = min_ini
+        while current <= min_fin - 90:  # Dejar al menos 90 min para el partido
+            h = current // 60
+            m = current % 60
+            horas.append(f"{h:02d}:{m:02d}")
+            current += 30
+        
+        if not horas:
+            horas = [inicio]
+        return horas
+    
+    horas_disponibles = generar_horas(fecha_seleccionada['hora_inicio'], fecha_seleccionada['hora_fin'])
+    
+    # Selección de hora
+    st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>⏰ Hora de inicio:</p>", unsafe_allow_html=True)
+    
+    if len(horas_disponibles) == 1:
+        hora_seleccionada = horas_disponibles[0]
+        st.markdown(f"""
+            <div style='background: #e3f2fd; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; text-align: center;'>
+                <p style='margin: 0; font-weight: 600;'>⏰ {hora_seleccionada}</p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        hora_seleccionada = st.select_slider(
+            "Hora",
+            options=horas_disponibles,
+            value=horas_disponibles[0],
+            label_visibility="collapsed"
+        )
+    
+    st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+    
+    # Resumen
+    st.markdown(f"""
+        <div style='background: #f0fdf4; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; border-left: 3px solid #10b981;'>
+            <p style='margin: 0; font-size: 0.85rem;'>
+                <strong>Resumen:</strong> {fecha_seleccionada['fecha_fmt']} a las {hora_seleccionada}
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # CSS para botón azul
+    st.markdown("""
+        <style>
+        [data-testid="stDialog"] button[kind="primary"] {
+            background-color: #1E88E5 !important;
+            background: #1E88E5 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Cancelar", use_container_width=True):
+            st.session_state.partido_confirmar = None
+            st.rerun()
+    with col2:
+        if st.button("✓ Confirmar", type="primary", use_container_width=True):
+            # Guardar en BD
+            st.session_state.db.confirmar_partido(
+                partido['id_partido'],
+                fecha_seleccionada['fecha'],
+                hora_seleccionada
+            )
+            st.session_state.partido_confirmar = None
+            st.session_state.needs_match_refresh = True
+            st.success("¡Partido programado!")
+            time.sleep(1)
+            st.rerun()
+
 # --- INICIALIZACIÓN ---
 if 'db' not in st.session_state:
     try: 
@@ -636,14 +769,26 @@ def main_app():
             except:
                 eq1, eq2 = m['nombres_str'], ""
             
-            # Card con botón azul integrado
+            # Obtener resumen de coincidencias
+            coincidencias = m.get('coincidencias', [])
+            primera = coincidencias[0] if coincidencias else {}
+            num_dias = len(coincidencias)
+            
+            # Formatear primera fecha
+            fecha_display = primera.get('fecha', '')
+            if num_dias > 1:
+                fecha_display = f"{num_dias} días disponibles"
+            else:
+                fecha_display = f"{fecha_display} · {primera.get('hora_inicio', '')} - {primera.get('hora_fin', '')}"
+            
+            # Card con info del partido
             card_html = f"""
                 <div style='background: linear-gradient(135deg, #e3f2fd 0%, #fff 100%); padding: 0.75rem; border-radius: 10px; margin-bottom: 0.5rem; border-left: 3px solid #1E88E5;'>
                     <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                         <span style='font-weight: 600; font-size: 0.85rem;'>{m['titulo']}</span>
                         <span style='background: #1E88E5; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>DISPONIBLE</span>
                     </div>
-                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{m['fecha']} · {m['hora_inicio']} - {m['hora_fin']}</p>
+                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{fecha_display}</p>
                     <div style='font-size: 0.85rem; margin-bottom: 0.75rem;'>
                         <p style='margin: 0; font-weight: 500;'>{eq1}</p>
                         <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
@@ -653,39 +798,24 @@ def main_app():
             """
             st.markdown(card_html, unsafe_allow_html=True)
             
-            # Usar st.form para aislar el botón y poder aplicar CSS específico
-            partido_id = m['id_partido']
-            with st.form(key=f"form_{partido_id}", border=False):
-                # CSS ultra-específico para botón azul
-                st.markdown("""
-                    <style>
-                    /* Botón azul FORZADO */
-                    form[data-testid="stForm"] button,
-                    form button[kind="primary"],
-                    [data-testid="stFormSubmitButton"] button,
-                    [data-testid="stFormSubmitButton"] > button[kind="primary"],
-                    div[data-testid="stForm"] button[type="submit"],
-                    .stForm button {
-                        background-color: #1E88E5 !important;
-                        background: #1E88E5 !important;
-                        color: white !important;
-                        border: none !important;
-                    }
-                    form[data-testid="stForm"] button:hover,
-                    [data-testid="stFormSubmitButton"] button:hover {
-                        background-color: #1565C0 !important;
-                        background: #1565C0 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                submitted = st.form_submit_button("Confirmar partido", type="primary", use_container_width=True)
-                if submitted:
-                    st.session_state.db.confirmar_partido(m['id_partido'], m['fecha'], f"{m['hora_inicio']}")
-                    st.session_state.needs_match_refresh = True
-                    st.success("¡Partido confirmado!")
-                    time.sleep(1)
-                    st.rerun()
+            # CSS para botón azul
+            st.markdown("""
+                <style>
+                button[key^="btn_confirmar_"] {
+                    background-color: #1E88E5 !important;
+                    color: white !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            # Botón que abre el popup
+            if st.button("📅 Confirmar partido", key=f"btn_confirmar_{m['id_partido']}", use_container_width=True):
+                st.session_state.partido_confirmar = m
+                st.rerun()
+    
+    # Mostrar popup si hay partido a confirmar
+    if st.session_state.get('partido_confirmar'):
+        popup_confirmar_partido(st.session_state.partido_confirmar)
     
     # Próximos Partidos - Estilo con degradado amarillo
     if programados:

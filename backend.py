@@ -377,6 +377,7 @@ class PadelDB:
         """
         Obtiene partidos PENDIENTES donde los 4 jugadores coinciden en disponibilidad.
         Mínimo 60 minutos de solapamiento.
+        Devuelve TODAS las fechas donde coinciden (no solo la primera).
         """
         try:
             # Obtener partidos pendientes del usuario
@@ -396,13 +397,15 @@ class PadelDB:
                 jugadores = partido['jugadores']
                 
                 # Buscar fechas donde TODOS los jugadores tienen disponibilidad
-                # Primero, obtener todas las fechas futuras donde al menos 1 tiene disponibilidad
                 fechas_candidatas = set()
                 for uid in jugadores:
                     if uid in disponibilidad:
                         for fecha in disponibilidad[uid].keys():
                             if fecha >= hoy:
                                 fechas_candidatas.add(fecha)
+                
+                # Lista de todas las coincidencias para este partido
+                coincidencias = []
                 
                 # Para cada fecha, verificar si los 4 coinciden con >= 60 min
                 for fecha in sorted(fechas_candidatas):
@@ -426,16 +429,21 @@ class PadelDB:
                             hora_inicio = f"{inicio_comun // 60:02d}:{inicio_comun % 60:02d}"
                             hora_fin = f"{fin_comun // 60:02d}:{fin_comun % 60:02d}"
                             
-                            disponibles.append({
-                                'id_partido': partido['id_partido'],
-                                'titulo': partido['titulo'],
-                                'nombres_str': partido['nombres_str'],
+                            coincidencias.append({
                                 'fecha': fecha,
                                 'hora_inicio': hora_inicio,
                                 'hora_fin': hora_fin,
                                 'solapamiento_min': overlap
                             })
-                            break  # Solo la primera coincidencia por partido
+                
+                # Si hay alguna coincidencia, añadir el partido con todas sus opciones
+                if coincidencias:
+                    disponibles.append({
+                        'id_partido': partido['id_partido'],
+                        'titulo': partido['titulo'],
+                        'nombres_str': partido['nombres_str'],
+                        'coincidencias': coincidencias  # Lista de todas las opciones
+                    })
             
             return disponibles
         except Exception as e:
