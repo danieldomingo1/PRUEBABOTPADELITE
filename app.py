@@ -457,10 +457,19 @@ def popup_confirmar_partido(partido):
         st.error("No hay fechas disponibles")
         return
     
+    # Separar parejas para mostrar en 3 líneas
+    nombres_str = partido.get('nombres_str', '')
+    try:
+        eq1, eq2 = nombres_str.split(" vs ")
+    except:
+        eq1, eq2 = nombres_str, ""
+    
     st.markdown(f"""
         <div style='text-align: center; margin-bottom: 1rem;'>
-            <h3 style='margin: 0; color: var(--primary);'>{partido['titulo']}</h3>
-            <p style='color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0;'>{partido['nombres_str']}</p>
+            <h3 style='margin: 0 0 0.75rem; color: var(--primary);'>{partido['titulo']}</h3>
+            <p style='margin: 0; font-weight: 500; font-size: 0.9rem;'>{eq1}</p>
+            <p style='margin: 0.25rem 0; font-size: 0.75rem; color: var(--text-muted); font-weight: 600;'>vs</p>
+            <p style='margin: 0; font-weight: 500; font-size: 0.9rem;'>{eq2}</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -808,8 +817,21 @@ def main_app():
                 </style>
             """, unsafe_allow_html=True)
             
-            # Botón que abre el popup
-            if st.button("📅 Confirmar partido", key=f"btn_confirmar_{m['id_partido']}", use_container_width=True):
+            # Botón que abre el popup - con CSS para forzar azul
+            st.markdown("""
+                <style>
+                div[data-testid="stButton"] > button {
+                    background-color: #1E88E5 !important;
+                    color: white !important;
+                    border: none !important;
+                }
+                div[data-testid="stButton"] > button:hover {
+                    background-color: #1565C0 !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            
+            if st.button("Confirmar partido", key=f"btn_confirmar_{m['id_partido']}", type="primary", use_container_width=True):
                 st.session_state.partido_confirmar = m
                 st.rerun()
     
