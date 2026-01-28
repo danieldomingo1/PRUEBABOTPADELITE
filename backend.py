@@ -1,5 +1,9 @@
+"""
+PadelLite Backend - Conexión con Google Sheets
+==============================================
+Última actualización: 2026-01-28
+"""
 import gspread
-import pandas as pd
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import streamlit as st
@@ -8,8 +12,13 @@ import os
 import re
 from functools import wraps
 
-# --- DECORADOR DE REINTENTOS ---
+
+# =============================================================================
+# UTILIDADES
+# =============================================================================
+
 def retry_on_error(max_retries=3, delay=1):
+    """Decorador para reintentar operaciones que fallen."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -25,47 +34,79 @@ def retry_on_error(max_retries=3, delay=1):
         return wrapper
     return decorator
 
-# --- HELPER: LIMPIEZA DE CLAVE PRIVADA ---
+
 def clean_private_key(pk):
-    if not pk: return ""
+    """Limpia y corrige formato de clave privada para Streamlit Cloud."""
+    if not pk:
+        return ""
     pk = pk.strip().strip('"').strip("'")
+    
+    # Intentar decodificar Base64 si no tiene headers PEM
     import base64
     try:
         if "-----BEGIN PRIVATE KEY-----" not in pk:
             missing_padding = len(pk) % 4
             if missing_padding:
                 pk += '=' * (4 - missing_padding)
-            decoded_bytes = base64.b64decode(pk)
-            decoded_str = decoded_bytes.decode('utf-8')
-            if "-----BEGIN PRIVATE KEY-----" in decoded_str:
-                return decoded_str
+            decoded = base64.b64decode(pk).decode('utf-8')
+            if "-----BEGIN PRIVATE KEY-----" in decoded:
+                return decoded
     except Exception:
         pass
+    
+    # Limpiar escapes de newline
     return pk.replace('\\n', '\n').replace('\\\\n', '\n')
 
-# --- HELPER: NORMALIZAR NIVEL ---
-def normalize_nivel(nivel):
-    """Normaliza niveles para comparación (M02 -> M2, etc)."""
-    if not nivel:
-        return ""
-    # Quitar ceros después de letras: M02 -> M2, F01 -> F1
-    return re.sub(r'([A-Z])0+(\d)', r'\1\2', str(nivel).upper())
+
+def time_to_minutes(time_str):
+    """Convierte HH:MM a minutos desde medianoche."""
+    try:
+        h, m = map(int, time_str.split(':'))
+        return h * 60 + m
+    except:
+        return 0
+
+
+def calculate_overlap(slots):
+    """
+    Calcula el solapamiento en minutos entre múltiples slots.
+    slots: lista de dicts con 'hora_inicio' y 'hora_fin'
+    Retorna: minutos de solapamiento (0 si no hay)
+    """
+    if not slots:
+        return 0
+    
+    # Encontrar el inicio más tardío y el fin más temprano
+    inicio_max = max(time_to_minutes(s['hora_inicio']) for s in slots)
+    fin_min = min(time_to_minutes(s['hora_fin']) for s in slots)
+    
+    overlap = fin_min - inicio_max
+    return max(0, overlap)
+
+
+# =============================================================================
+# CLASE PRINCIPAL
+# =============================================================================
 
 class PadelDB:
+    """Gestiona la conexión y operaciones con la base de datos (Google Sheets)."""
+    
     def __init__(self):
-        scopes = ['https://www.googleapis.com/auth/spreadsheets', "https://www.googleapis.com/auth/drive"]
+        scopes = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
         creds = None
-        creds_dict = None
         errors = []
         
-        # 1. Archivo local
+        # Opción 1: Archivo local (desarrollo)
         if os.path.exists('credentials.json'):
             try:
                 creds = Credentials.from_service_account_file('credentials.json', scopes=scopes)
             except Exception as e:
                 errors.append(f"Local: {e}")
         
-        # 2. Secrets
+        # Opción 2: Streamlit Secrets (producción)
         if creds is None:
             try:
                 if hasattr(st, 'secrets') and "gcp_service_account" in st.secrets:
@@ -76,11 +117,11 @@ class PadelDB:
             except Exception as e:
                 errors.append(f"Secrets: {e}")
 
-        # 3. Env Vars
+        # Opción 3: Variables de entorno
         if creds is None:
             try:
-                if os.environ.get('GCP_PRIVATE_KEY'):
-                    pk = os.environ.get('GCP_PRIVATE_KEY', '')
+                pk = os.environ.get('GCP_PRIVATE_KEY', '')
+                if pk:
                     creds_dict = {
                         "type": os.environ.get('GCP_TYPE', 'service_account'),
                         "project_id": os.environ.get('GCP_PROJECT_ID', ''),
@@ -96,9 +137,9 @@ class PadelDB:
                 errors.append(f"EnvVars: {e}")
 
         if creds is None:
-            st.error(f"❌ No se encuentran credenciales. Detalle errores: {'; '.join(errors)}")
+            st.error(f"❌ No se encuentran credenciales. Errores: {'; '.join(errors)}")
             st.stop()
-            
+        
         try:
             client = gspread.authorize(creds)
             self.spreadsheet_id = '15MAbaPH1gqrCIcUtj6JgdSJXiYMdOBNIxaOqtAHsOB0'
@@ -107,11 +148,17 @@ class PadelDB:
             st.error(f"❌ Error conectando con Google Sheets: {e}")
             st.stop()
         
+        # Sistema de caché simple
         self._cache = {}
         self._cache_time = {}
-        self._cache_ttl = 300 
+        self._cache_ttl = 300  # 5 minutos
 
+    # -------------------------------------------------------------------------
+    # CACHÉ
+    # -------------------------------------------------------------------------
+    
     def _get_cached(self, key, fetch_func, force_refresh=False):
+        """Obtiene datos del caché o los recupera si han expirado."""
         now = time.time()
         if not force_refresh and key in self._cache:
             if now - self._cache_time.get(key, 0) < self._cache_ttl:
@@ -130,227 +177,289 @@ class PadelDB:
             self._cache.clear()
             self._cache_time.clear()
 
+    # -------------------------------------------------------------------------
+    # USUARIOS
+    # -------------------------------------------------------------------------
+    
     def _get_users_map(self):
-        """Devuelve un diccionario {ID_USUARIO: NOMBRE}."""
+        """Devuelve diccionario {ID_USUARIO: NOMBRE}."""
         def fetch():
             try:
                 ws = self.sheet.worksheet("USUARIOS")
                 data = ws.get_all_records()
-                result = {}
-                for r in data:
-                    uid = str(r.get('ID_USUARIO', ''))
-                    nombre = r.get('NOMBRE', uid)  # Fallback al ID si no hay nombre
-                    if uid:
-                        result[uid] = nombre
-                return result
-            except Exception as e:
-                print(f"Error en _get_users_map: {e}")
+                return {str(r.get('ID_USUARIO', '')): r.get('NOMBRE', '') for r in data if r.get('ID_USUARIO')}
+            except:
                 return {}
         return self._get_cached("users_map", fetch)
 
     @retry_on_error()
-    def get_info_usuario(self, usuario):
+    def get_info_usuario(self, user_id):
+        """Obtiene nombre y nivel de un usuario."""
         try:
             ws = self.sheet.worksheet("USUARIOS")
             data = ws.get_all_records()
             for row in data:
-                if str(row.get('ID_USUARIO', '')) == str(usuario):
+                if str(row.get('ID_USUARIO', '')) == str(user_id):
                     return row.get('NOMBRE'), row.get('NIVEL')
             return None, None
-        except Exception as e:
-            print(f"Error en get_info_usuario: {e}")
+        except:
             return None, None
 
     @retry_on_error()
     def validar_login(self, usuario, password):
+        """Valida credenciales de login."""
         try:
-            def fetch_users():
+            def fetch():
                 ws = self.sheet.worksheet("USUARIOS")
                 return ws.get_all_records()
             
-            data = self._get_cached("usuarios_data", fetch_users)
+            data = self._get_cached("usuarios_data", fetch)
             
             for row in data:
-                uid = str(row.get('ID_USUARIO', ''))
-                pwd = str(row.get('PASSWORD', ''))
-                if uid == str(usuario) and pwd == str(password):
+                if (str(row.get('ID_USUARIO', '')) == str(usuario) and 
+                    str(row.get('PASSWORD', '')) == str(password)):
                     return row.get('NOMBRE'), row.get('NIVEL')
             return None, None
-        except Exception as e:
-            print(f"Error en validar_login: {e}")
+        except:
             return None, None
 
+    # -------------------------------------------------------------------------
+    # DISPONIBILIDAD
+    # -------------------------------------------------------------------------
+    
     @retry_on_error()
-    def get_mis_horas(self, id_usuario):
+    def get_mis_horas(self, user_id):
+        """Obtiene la disponibilidad guardada del usuario."""
         try:
             def fetch():
                 ws = self.sheet.worksheet("DISPONIBILIDAD")
                 return ws.get_all_records()
             
-            data = self._get_cached("todas_horas", fetch)
+            data = self._get_cached("disponibilidad", fetch)
             
-            user_slots = []
-            for d in data:
-                if str(d.get('ID_USUARIO', '')) == str(id_usuario):
-                    user_slots.append({
-                        'fecha': d.get('FECHA', ''),
-                        'hora_inicio': d.get('HORA_INICIO', ''),
-                        'hora_fin': d.get('HORA_FIN', '')
-                    })
-            return user_slots
-        except Exception as e:
-            print(f"Error en get_mis_horas: {e}")
+            return [
+                {
+                    'fecha': d.get('FECHA', ''),
+                    'hora_inicio': d.get('HORA_INICIO', ''),
+                    'hora_fin': d.get('HORA_FIN', '')
+                }
+                for d in data if str(d.get('ID_USUARIO', '')) == str(user_id)
+            ]
+        except:
             return []
 
     @retry_on_error()
-    def guardar_disponibilidad(self, id_usuario, nivel, nuevos_slots):
+    def guardar_disponibilidad(self, user_id, nivel, nuevos_slots):
+        """Guarda la disponibilidad del usuario (reemplaza la anterior)."""
         ws = self.sheet.worksheet("DISPONIBILIDAD")
         data = ws.get_all_records()
         
         # Mantener registros de otros usuarios
-        otros = [d for d in data if str(d.get('ID_USUARIO', '')) != str(id_usuario)]
+        otros = [d for d in data if str(d.get('ID_USUARIO', '')) != str(user_id)]
         
         # Crear nuevos registros
-        nuevos = []
-        for slot in nuevos_slots:
-            nuevos.append({
-                'ID_USUARIO': id_usuario,
+        nuevos = [
+            {
+                'ID_USUARIO': user_id,
                 'FECHA': slot['fecha'],
                 'HORA_INICIO': slot['hora_inicio'],
                 'HORA_FIN': slot['hora_fin'],
                 'NIVEL': nivel
-            })
+            }
+            for slot in nuevos_slots
+        ]
         
         # Combinar y ordenar
-        todos = otros + nuevos
-        todos.sort(key=lambda x: x.get('FECHA', ''))
+        todos = sorted(otros + nuevos, key=lambda x: x.get('FECHA', ''))
         
         # Reescribir hoja
         ws.clear()
         headers = ['ID_USUARIO', 'FECHA', 'HORA_INICIO', 'HORA_FIN', 'NIVEL']
         ws.append_row(headers)
-        
         if todos:
             rows = [[d.get(h, '') for h in headers] for d in todos]
             ws.append_rows(rows)
         
-        # Invalidar caché
-        self._invalidate_cache("todas_horas")
+        self._invalidate_cache("disponibilidad")
         return True
 
-    @retry_on_error()
-    def get_partidos_posibles(self, nivel):
-        """Encuentra partidos donde 4+ jugadores coinciden en disponibilidad."""
-        try:
+    def _get_disponibilidad_por_fecha(self):
+        """Obtiene disponibilidad agrupada por usuario y fecha."""
+        def fetch():
             ws = self.sheet.worksheet("DISPONIBILIDAD")
             data = ws.get_all_records()
             
-            if not data:
-                return []
-            
-            hoy = datetime.now().strftime("%Y-%m-%d")
-            nivel_normalizado = normalize_nivel(nivel)
-            
-            # Filtrar por fecha futura y nivel
-            filtrados = []
+            # Estructura: {user_id: {fecha: {'hora_inicio': X, 'hora_fin': Y}}}
+            result = {}
             for d in data:
+                uid = str(d.get('ID_USUARIO', ''))
                 fecha = d.get('FECHA', '')
-                if fecha >= hoy:
-                    nivel_disp = normalize_nivel(d.get('NIVEL', ''))
-                    if nivel_disp == nivel_normalizado:
-                        filtrados.append(d)
-            
-            if not filtrados:
-                return []
-            
-            # Agrupar por fecha/hora
-            grupos = {}
-            for d in filtrados:
-                key = (d.get('FECHA', ''), d.get('HORA_INICIO', ''), d.get('HORA_FIN', ''))
-                if key not in grupos:
-                    grupos[key] = []
-                grupos[key].append(str(d.get('ID_USUARIO', '')))
-            
-            # Buscar grupos con 4+ jugadores
-            users_map = self._get_users_map()
-            matches = []
-            count = 0
-            
-            for (fecha, ini, fin), uids in grupos.items():
-                if len(uids) >= 4:
-                    jugadores = uids[:4]
-                    nombres = [users_map.get(u, u) for u in jugadores]
-                    
-                    matches.append({
-                        'id_partido': f"MATCH_{fecha}_{ini}_{count}",
-                        'fecha': fecha,
-                        'fecha_fmt': fecha,
-                        'hora_inicio': ini,
-                        'hora_fin': fin,
-                        'titulo': f"Jornada {count + 1}",
-                        'jugadores_names': f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
-                    })
-                    count += 1
-            
-            return matches
-        except Exception as e:
-            print(f"Error en get_partidos_posibles: {e}")
-            return []
+                if uid and fecha:
+                    if uid not in result:
+                        result[uid] = {}
+                    result[uid][fecha] = {
+                        'hora_inicio': d.get('HORA_INICIO', ''),
+                        'hora_fin': d.get('HORA_FIN', '')
+                    }
+            return result
+        return self._get_cached("disponibilidad_mapa", fetch)
 
+    # -------------------------------------------------------------------------
+    # PARTIDOS
+    # -------------------------------------------------------------------------
+    
     @retry_on_error()
-    def get_mis_partidos(self, nivel):
-        """Obtiene partidos del historial."""
+    def get_partidos_usuario(self, user_id):
+        """
+        Obtiene todos los partidos donde el usuario es jugador.
+        Retorna dict con keys: 'pendientes', 'programados', 'jugados'
+        """
         try:
             ws = self.sheet.worksheet("PARTIDOS")
             data = ws.get_all_records()
-            
             users_map = self._get_users_map()
             
-            processed = []
+            pendientes = []
+            programados = []
+            jugados = []
+            
             for p in data:
-                # --- FORMATO TÍTULO ---
-                pid = str(p.get('ID_PARTIDO', ''))
-                titulo = pid
-                
-                # Buscar patrón J seguido de número en cualquier parte
-                # Ejemplo: P-M2-J4-01 -> Jornada 4
-                match = re.search(r'J(\d+)', pid)
-                if match:
-                    titulo = f"Jornada {match.group(1)}"
-                
-                p['titulo_fmt'] = titulo
-                
-                # --- FORMATO JUGADORES ---
-                ids = [
+                # Verificar si el usuario es uno de los 4 jugadores
+                jugadores = [
                     str(p.get('JUGADOR_1', '') or ''),
                     str(p.get('JUGADOR_2', '') or ''),
                     str(p.get('JUGADOR_3', '') or ''),
                     str(p.get('JUGADOR_4', '') or '')
                 ]
                 
-                # Resolver nombres con fallback al ID
-                nombres = []
-                for uid in ids:
-                    if uid:
-                        nombre = users_map.get(uid, uid)
-                        nombres.append(nombre)
-                    else:
-                        nombres.append("...")
+                if str(user_id) not in jugadores:
+                    continue  # El usuario no está en este partido
                 
-                # Formato final
-                if any(uid for uid in ids):
-                    p['nombres_str'] = f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
-                else:
-                    p['nombres_str'] = "Jugadores por asignar"
+                # Formatear título (P-M2-J4-01 -> Jornada 4)
+                pid = str(p.get('ID_PARTIDO', ''))
+                match = re.search(r'J(\d+)', pid)
+                titulo = f"Jornada {match.group(1)}" if match else pid
                 
-                processed.append(p)
+                # Formatear nombres
+                nombres = [users_map.get(uid, uid) if uid else "..." for uid in jugadores]
+                nombres_str = f"{nombres[0]}/{nombres[1]} vs {nombres[2]}/{nombres[3]}"
+                
+                partido_fmt = {
+                    'id_partido': pid,
+                    'titulo': titulo,
+                    'jugadores': jugadores,
+                    'nombres_str': nombres_str,
+                    'fecha': p.get('FECHA', ''),
+                    'hora': p.get('HORA', ''),
+                    'estado': p.get('ESTADO', ''),
+                    'resultado': p.get('RESULTADO', '')
+                }
+                
+                estado = p.get('ESTADO', '')
+                if estado == 'PENDIENTE':
+                    pendientes.append(partido_fmt)
+                elif estado == 'PROGRAMADO':
+                    programados.append(partido_fmt)
+                elif estado == 'JUGADO':
+                    jugados.append(partido_fmt)
             
-            return processed
+            return {
+                'pendientes': pendientes,
+                'programados': programados,
+                'jugados': jugados
+            }
         except Exception as e:
-            print(f"Error en get_mis_partidos: {e}")
+            print(f"Error en get_partidos_usuario: {e}")
+            return {'pendientes': [], 'programados': [], 'jugados': []}
+
+    @retry_on_error()
+    def get_partidos_disponibles(self, user_id):
+        """
+        Obtiene partidos PENDIENTES donde los 4 jugadores coinciden en disponibilidad.
+        Mínimo 60 minutos de solapamiento.
+        """
+        try:
+            # Obtener partidos pendientes del usuario
+            partidos = self.get_partidos_usuario(user_id)
+            pendientes = partidos['pendientes']
+            
+            if not pendientes:
+                return []
+            
+            # Obtener disponibilidad de todos
+            disponibilidad = self._get_disponibilidad_por_fecha()
+            hoy = datetime.now().strftime("%Y-%m-%d")
+            
+            disponibles = []
+            
+            for partido in pendientes:
+                jugadores = partido['jugadores']
+                
+                # Buscar fechas donde TODOS los jugadores tienen disponibilidad
+                # Primero, obtener todas las fechas futuras donde al menos 1 tiene disponibilidad
+                fechas_candidatas = set()
+                for uid in jugadores:
+                    if uid in disponibilidad:
+                        for fecha in disponibilidad[uid].keys():
+                            if fecha >= hoy:
+                                fechas_candidatas.add(fecha)
+                
+                # Para cada fecha, verificar si los 4 coinciden con >= 60 min
+                for fecha in sorted(fechas_candidatas):
+                    slots = []
+                    todos_tienen = True
+                    
+                    for uid in jugadores:
+                        if uid in disponibilidad and fecha in disponibilidad[uid]:
+                            slots.append(disponibilidad[uid][fecha])
+                        else:
+                            todos_tienen = False
+                            break
+                    
+                    if todos_tienen and len(slots) == 4:
+                        overlap = calculate_overlap(slots)
+                        if overlap >= 60:  # Mínimo 1 hora
+                            # Calcular hora común
+                            inicio_comun = max(time_to_minutes(s['hora_inicio']) for s in slots)
+                            fin_comun = min(time_to_minutes(s['hora_fin']) for s in slots)
+                            
+                            hora_inicio = f"{inicio_comun // 60:02d}:{inicio_comun % 60:02d}"
+                            hora_fin = f"{fin_comun // 60:02d}:{fin_comun % 60:02d}"
+                            
+                            disponibles.append({
+                                'id_partido': partido['id_partido'],
+                                'titulo': partido['titulo'],
+                                'nombres_str': partido['nombres_str'],
+                                'fecha': fecha,
+                                'hora_inicio': hora_inicio,
+                                'hora_fin': hora_fin,
+                                'solapamiento_min': overlap
+                            })
+                            break  # Solo la primera coincidencia por partido
+            
+            return disponibles
+        except Exception as e:
+            print(f"Error en get_partidos_disponibles: {e}")
             return []
 
     @retry_on_error()
-    def programar_partido(self, id_partido, fecha, hora_range):
-        # TODO: Implementar guardado de partido confirmado
-        pass
+    def confirmar_partido(self, id_partido, fecha, hora):
+        """Cambia un partido de PENDIENTE a PROGRAMADO."""
+        try:
+            ws = self.sheet.worksheet("PARTIDOS")
+            data = ws.get_all_records()
+            
+            # Encontrar el partido y actualizar
+            for i, p in enumerate(data):
+                if str(p.get('ID_PARTIDO', '')) == str(id_partido):
+                    # Actualizar celdas (fila i+2 porque row 1 son headers)
+                    row = i + 2
+                    # Columnas: FECHA=8, HORA=9, ESTADO=11 (según estructura)
+                    ws.update_cell(row, 8, fecha)
+                    ws.update_cell(row, 9, hora)
+                    ws.update_cell(row, 11, 'PROGRAMADO')
+                    return True
+            return False
+        except Exception as e:
+            print(f"Error en confirmar_partido: {e}")
+            return False

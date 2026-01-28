@@ -607,20 +607,22 @@ def main_app():
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     
     # === PARTIDOS ===
-    if 'matches_cache' not in st.session_state or st.session_state.get('needs_match_refresh', False):
+    if 'partidos_cache' not in st.session_state or st.session_state.get('needs_match_refresh', False):
         with st.spinner("Cargando partidos..."):
             try:
-                st.session_state.matches_cache = st.session_state.db.get_partidos_posibles(st.session_state.user['nivel'])
-                st.session_state.historial_cache = st.session_state.db.get_mis_partidos(st.session_state.user['nivel'])
+                user_id = st.session_state.user['id']
+                st.session_state.disponibles_cache = st.session_state.db.get_partidos_disponibles(user_id)
+                partidos_data = st.session_state.db.get_partidos_usuario(user_id)
+                st.session_state.programados_cache = partidos_data.get('programados', [])
+                st.session_state.jugados_cache = partidos_data.get('jugados', [])
+                st.session_state.partidos_cache = True
                 st.session_state.needs_match_refresh = False
             except: 
                 pass
         
-    matches = st.session_state.get('matches_cache', [])
-    historial = st.session_state.get('historial_cache', [])
-    
-    programados = [p for p in historial if p.get('ESTADO') == 'PROGRAMADO']
-    jugados = [p for p in historial if p.get('ESTADO') in ['JUGADO', 'CERRADO']]
+    matches = st.session_state.get('disponibles_cache', [])
+    programados = st.session_state.get('programados_cache', [])
+    jugados = st.session_state.get('jugados_cache', [])
     
     # Partidos Disponibles - Cards con degradado azul
     if matches:
@@ -630,9 +632,9 @@ def main_app():
         for m in matches:
             # Separar parejas
             try:
-                eq1, eq2 = m['jugadores_names'].split(" vs ")
+                eq1, eq2 = m['nombres_str'].split(" vs ")
             except:
-                eq1, eq2 = m['jugadores_names'], ""
+                eq1, eq2 = m['nombres_str'], ""
             
             # Card con botón azul integrado
             card_html = f"""
@@ -641,7 +643,7 @@ def main_app():
                         <span style='font-weight: 600; font-size: 0.85rem;'>{m['titulo']}</span>
                         <span style='background: #1E88E5; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>DISPONIBLE</span>
                     </div>
-                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{m['fecha_fmt']} · {m['hora_inicio']} - {m['hora_fin']}</p>
+                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{m['fecha']} · {m['hora_inicio']} - {m['hora_fin']}</p>
                     <div style='font-size: 0.85rem; margin-bottom: 0.75rem;'>
                         <p style='margin: 0; font-weight: 500;'>{eq1}</p>
                         <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
@@ -679,7 +681,7 @@ def main_app():
                 
                 submitted = st.form_submit_button("Confirmar partido", type="primary", use_container_width=True)
                 if submitted:
-                    st.session_state.db.programar_partido(m['id_partido'], m['fecha'], f"{m['hora_inicio']} - {m['hora_fin']}")
+                    st.session_state.db.confirmar_partido(m['id_partido'], m['fecha'], f"{m['hora_inicio']}")
                     st.session_state.needs_match_refresh = True
                     st.success("¡Partido confirmado!")
                     time.sleep(1)
@@ -690,7 +692,7 @@ def main_app():
         st.markdown("<h3 style='margin-top: 1.5rem;'>Próximos partidos</h3>", unsafe_allow_html=True)
         
         for p in programados:
-            titulo = p.get('titulo_fmt', p['ID_PARTIDO'])
+            titulo = p.get('titulo', p.get('id_partido', ''))
             nombres = p.get('nombres_str', "")
             
             # Separar parejas para mostrar en 3 líneas
@@ -705,7 +707,7 @@ def main_app():
                         <span style='font-weight: 600; font-size: 0.85rem;'>{titulo}</span>
                         <span style='background: #D4D700; color: #1a1a1a; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>PROGRAMADO</span>
                     </div>
-                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{p['FECHA']} · {p['HORA']}</p>
+                    <p style='font-size: 0.75rem; color: #64748b; margin: 0 0 0.5rem;'>{p.get('fecha', '')} · {p.get('hora', '')}</p>
                     <div style='font-size: 0.85rem;'>
                         <p style='margin: 0; font-weight: 500;'>{eq1}</p>
                         <p style='margin: 0.15rem 0; font-size: 0.7rem; color: #64748b; font-weight: 600;'>vs</p>
@@ -739,7 +741,7 @@ def main_app():
     if st.session_state.mostrar_historial:
         if jugados:
             for p in jugados:
-                titulo = p.get('titulo_fmt', p['ID_PARTIDO'])
+                titulo = p.get('titulo', p.get('id_partido', ''))
                 nombres = p.get('nombres_str', "")
                 
                 # Separar parejas
@@ -754,7 +756,7 @@ def main_app():
                             <span style='font-weight: 600; font-size: 0.85rem;'>{titulo}</span>
                             <span style='background: #94a3b8; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700;'>JUGADO</span>
                         </div>
-                        <p style='font-size: 0.7rem; color: #64748b; margin: 0 0 0.5rem;'>{p['FECHA']}</p>
+                        <p style='font-size: 0.7rem; color: #64748b; margin: 0 0 0.5rem;'>{p.get('fecha', '')}</p>
                         <div style='font-size: 0.8rem;'>
                             <p style='margin: 0;'>{eq1}</p>
                             <p style='margin: 0.1rem 0; font-size: 0.65rem; color: #94a3b8; font-weight: 600;'>vs</p>
