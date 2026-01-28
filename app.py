@@ -619,8 +619,16 @@ def main_app():
     matches = st.session_state.get('matches_cache', [])
     historial = st.session_state.get('historial_cache', [])
     
-    programados = [p for p in historial if p['ESTADO'] == 'PROGRAMADO']
-    jugados = [p for p in historial if p['ESTADO'] in ['JUGADO', 'CERRADO']]
+    # DEBUG: Mostrar info de debugging
+    with st.expander("🔧 Debug Info (borrar después)"):
+        st.write(f"Nivel usuario: {st.session_state.user.get('nivel', 'N/A')}")
+        st.write(f"Matches encontrados: {len(matches)}")
+        if matches:
+            st.write("Matches:", matches)
+        st.write(f"Historial total: {len(historial)}")
+    
+    programados = [p for p in historial if p.get('ESTADO') == 'PROGRAMADO']
+    jugados = [p for p in historial if p.get('ESTADO') in ['JUGADO', 'CERRADO']]
     
     # Partidos Disponibles - Cards con degradado azul
     if matches:
