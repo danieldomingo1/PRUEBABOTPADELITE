@@ -1,10 +1,9 @@
-# Archivos sensibles - NO subir
+# === ARCHIVOS SENSIBLES ===
 credentials.json
-secrets_template.toml
 .streamlit/secrets.toml
-.env
+*.env
 
-# Python
+# === PYTHON ===
 __pycache__/
 *.pyc
 *.pyo
@@ -12,21 +11,11 @@ __pycache__/
 venv/
 env/
 
-# IDE
+# === IDE ===
 .vscode/
 .idea/
 
-# Scripts de utilidad (no necesarios para producción)
-admin_populate.py
-importar_jugado.py
-importar_partidos.py
-simulacion_match.py
-actualizar_grupos.py
-actualizar_estructura_y_datos_v2.py
-crear_base_datos.py
-setup_test_disponibilidad.py
-
-# Otros
+# === SISTEMA ===
 *.log
 .DS_Store
 Thumbs.db
