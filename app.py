@@ -690,6 +690,18 @@ def popup_editar_partido(partido):
         if 'fecha_edit_seleccionada' not in st.session_state:
             st.session_state.fecha_edit_seleccionada = semana1[0]['fecha']
         
+        # CSS para hacer botones más compactos
+        st.markdown("""
+            <style>
+            /* Botones de fecha más pequeños */
+            div[data-testid="stDialog"] div[data-testid="stButton"] > button {
+                padding: 0.25rem 0.5rem !important;
+                font-size: 0.75rem !important;
+                min-height: 2rem !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
         with col1:
             st.markdown("<p style='font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem;'>Esta semana</p>", unsafe_allow_html=True)
             for dia in semana1:
@@ -907,7 +919,21 @@ def main_app():
     
     st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
     
-    # === BOTÓN GUARDAR ===
+    # === BOTÓN GUARDAR AMARILLO ===
+    st.markdown("""
+        <style>
+        /* Botón guardar disponibilidad amarillo */
+        div[data-testid="stButton"] > button[kind="primary"] {
+            background-color: #D4D700 !important;
+            color: #1a1a1a !important;
+            border: none !important;
+        }
+        div[data-testid="stButton"] > button[kind="primary"]:hover {
+            background-color: #b8ba00 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     if st.button("Guardar disponibilidad", type="primary", use_container_width=True):
         st.session_state.mostrar_popup_guardado = True
 
